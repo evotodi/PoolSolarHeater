@@ -1,0 +1,30 @@
+{
+    "name": "PoolHeater",
+    "device_id": "poolheater",
+    "device_stats_interval": 300,
+    "wifi": {
+      "ssid": "DavisHome",
+      "password": "CottonDog"
+    },
+    "mqtt": {
+      "host": "192.168.14.228",
+      "port": 1883,
+      "auth": true,
+      "username": "poolheater",
+      "password": "Isabelle2014"
+    },
+    "ota": {
+      "enabled": true
+    },
+    "settings": {
+      "dark": 400,
+      
+      "framesr": 11000,
+      "frametr": 10000,
+      "framebc": 3950,
+      "framevcc": 4.55,
+
+      "tin_addr": "289D6F49F67A3CF8",
+      "tout_arrd": "283E4749F6C13C1A"
+    }
+  }
