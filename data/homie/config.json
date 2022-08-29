@@ -21,10 +21,12 @@
       
       "frame1": "vcc=4.55,adcRef=4.55,serRes=10000,ntcRes=10000,tempNom=25,bc=3950,samples=5,sampleDly=20",
       "frame2": "vcc=4.55,adcRef=4.55,serRes=10000,ntcRes=10000,tempNom=25,bc=3950,samples=5,sampleDly=20",
-      "ambiant": "vcc=4.55,adcRef=4.55,serRes=90000,ntcRes=100000,tempNom=25,bc=3950,samples=5,sampleDly=20",
+      "ambiant": "vcc=4.55,adcRef=4.55,serRes=120000,ntcRes=100000,tempNom=25,bc=3950,samples=5,sampleDly=20",
 
       "tin_addr": "289D6F49F67A3CF8",
       "tout_addr": "283E4749F6C13C1A",
-      "gpm": 5.0
+      "gpm": 2.0,
+
+      "setpoint": 95.0 
     }
   }

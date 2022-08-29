@@ -25,12 +25,17 @@ NTCSettings frame2Settings;
 NTCSettings ambiantSettings;
 
 unsigned long currentMillis = 0;
-unsigned long intervalData = LOOP_RUN_DLY;
+unsigned long intervalData = LOOP_DAT_DLY;
 unsigned long previousMillisData = 0;
+unsigned long intervalProc = LOOP_PROC_DLY;
+unsigned long previousMillisProc = 0;
+unsigned long intervalPub = LOOP_PUB_DLY;
+unsigned long previousMillisPub = 0;
 unsigned long intervalHB = 1*1E3;
 unsigned long previousMillisHB = 0;
 
 bool isDark = true;
+bool pumpOn = false;
 int16_t light = 0;
 float tin = -127.0;
 float tout = -127.0;
@@ -47,6 +52,7 @@ HomieNode lightNode("light", "Light", "float");
 
 HomieSetting<long> darkSetting("dark", "minimum light val");
 HomieSetting<double> gpmSetting("gpm", "flow in gpm");
+HomieSetting<double> setpointSetting("setpoint", "set point");
 
 HomieSetting<const char *> frame1Setting("frame1", "frame 1 settings");
 HomieSetting<const char *> frame2Setting("frame2", "frame 2 settings");
@@ -82,6 +88,8 @@ void testing()
 
 void setup() {
   pinMode(LED_BUILTIN_AUX, OUTPUT);
+  pinMode(RLY_PIN, OUTPUT);
+
   #ifdef DEBUG
   Serial.begin(115200);
   #else
@@ -121,6 +129,7 @@ void setup() {
   infoNode.advertise("watts_t").setName("Watts Total").setDatatype("float").setUnit("W");
   infoNode.advertise("watts_f1").setName("Watts F1").setDatatype("float").setUnit("W");
   infoNode.advertise("watts_f2").setName("Watts F2").setDatatype("float").setUnit("W");
+  infoNode.advertise("pump").setName("PumpOn").setDatatype("boolean");
 
   Homie.setup();
 }
@@ -170,7 +179,7 @@ void loopHandler()
 {
   currentMillis = millis();
 
-  // Process data
+  // Gather data
   if(currentMillis - previousMillisData > intervalData || previousMillisData == 0) {
     if (year() == 1970) {
       #ifdef DEBUG
@@ -183,20 +192,17 @@ void loopHandler()
       yield();
     }
     
+    Homie.getLogger() << "Setpoint = " << setpointSetting.get() << " °F" << endl;
+
     sensors.requestTemperatures();
     delay(100);
     
     tin = sensors.getTempF(tempSensorIn);
-    Homie.getLogger() << "Tin = " << tin << " °F" << endl;
     yield();
-
     tout = sensors.getTempF(tempSensorOut);
-    Homie.getLogger() << "Tout = " << tout << " °F" << endl;
     yield();
-
     wattsT = calcWatts(tin, tout);
-    Homie.getLogger() << "Watts-T = " << wattsT << endl;
-    Serial.printf("WATTS-T = %.5f\n", wattsT);
+    Homie.getLogger() << "Tin = " << tin << " °F " << "Tout = " << tout << " °F " << " Watts = " << wattsT << endl;
     yield();
 
     air = ntcAmbiant.readTempF(ADC_AMBIANT);
@@ -204,42 +210,79 @@ void loopHandler()
     yield();
 
     f1 = ntcFrame1.readTempF(ADC_FRAME1);
-    Homie.getLogger() << "Frame 1 = " << f1 << " °F" << endl;
     yield();
-
     wattsF1 = calcWatts(air, f1);
-    Homie.getLogger() << "Watts-F1 = " << wattsF1 << endl;
-    Serial.printf("WATTS-F1 = %.5f\n", wattsF1);
+    Homie.getLogger() << "Frame 1 = " << f1 << " °F " << " Watts = " << wattsF1 << endl;
     yield();
 
     f2 = ntcFrame1.readTempF(ADC_FRAME2);
-    Homie.getLogger() << "Frame 2 = " << f2 << " °F" << endl;
     yield();
-
     wattsF2 = calcWatts(air, f2);
-    Homie.getLogger() << "Watts-F2 = " << wattsF2 << endl;
-    Serial.printf("WATTS-F2 = %.5f\n", wattsF2);
+    Homie.getLogger() << "Frame 2 = " << f2 << " °F "  << " Watts = " << wattsF2 << endl;
     yield();
 
     light = mcp.analogRead(ADC_LIGHT);
-    Homie.getLogger() << "Light level = " << light << endl;
-    yield();
-
-    Homie.getLogger() << "Dark setting = " << darkSetting.get() << endl;
-    yield();
-
     if(light <= int16_t(darkSetting.get())) {
       isDark = true;
-      Homie.getLogger() << "Dark out = Yes" << endl;
     }else{
       isDark = false;
-      Homie.getLogger() << "Dark out = No" << endl;
     }
+    Homie.getLogger() << "Light level = " << light << "  Dark setting = " << darkSetting.get() << " Dark out = " << boolToStr(isDark) << endl;
+    yield();
     
+    if(isDark){
+      intervalProc = LOOP_SLEEP_DLY;
+      intervalPub = LOOP_SLEEP_DLY;
+      previousMillisProc = 0;
+    }else{
+      intervalProc = LOOP_PROC_DLY;
+      intervalPub = LOOP_PUB_DLY;
+    }
+    yield();
+
+    Homie.getLogger() << "Pump On = " << boolToStr(pumpOn) << endl;
+
+    Homie.getLogger() << endl;
+    previousMillisData = currentMillis;
+  }
+  yield();
+
+  // Process data
+  if((currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) && !isDark)
+  {
+    Serial.println("PROCESS");
+    Serial.printf("Watts T = %d\n", int(wattsT));
+
+    if(int(wattsT) >= 1){
+      Serial.println("PUMP ON");
+      digitalWrite(RLY_PIN, HIGH);
+      pumpOn = true;
+    }else{
+      Serial.println("PUMP OFF");
+      digitalWrite(RLY_PIN, LOW);
+      pumpOn = false;
+    }
+
+
+    previousMillisProc = currentMillis;
+  }
+  else if((currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) && isDark)
+  {
+    Serial.println("PUMP OFF ELSE");
+    digitalWrite(RLY_PIN, LOW);
+    pumpOn = false;
+    
+    previousMillisProc = currentMillis;
+  }
+  yield();
+
+  // Publish data
+  if(currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
     infoNode.setProperty("timestamp").send(getTimestamp());
     infoNode.setProperty("watts_t").send(String(wattsT));
     infoNode.setProperty("watts_f1").send(String(wattsF1));
     infoNode.setProperty("watts_f2").send(String(wattsF2));
+    infoNode.setProperty("pump").send(pumpOn ? "true" : "false");
     lightNode.setProperty("light").send(String(light));
     lightNode.setProperty("dark").send(isDark ? "true" : "false");
     tempNode.setProperty("tin").send(String(tin));
@@ -248,12 +291,8 @@ void loopHandler()
     tempNode.setProperty("f2").send(String(f2));
     tempNode.setProperty("air").send(String(air));
 
-    yield();
-
-    Homie.getLogger() << endl;
-    previousMillisData = currentMillis;
+    previousMillisPub = currentMillis;
   }
-
   yield();
 
   // Blink the heartbeat led
@@ -423,6 +462,10 @@ void validateHomieSettings()
   gpmSetting.setDefaultValue(GPM_DEFAULT).setValidator([] (double candidate) {
     return candidate > 0;
   });
+
+  setpointSetting.setDefaultValue(SP_DEFAULT).setValidator([] (double candidate) {
+    return candidate > 0;
+  });
 }
 
 NTCSettings parseNTCSettings(const char * settings, const char * name)
@@ -459,10 +502,6 @@ float calcWatts(float tempIn, float tempOut)
   }
   return rtn;
 }
-
-
-
-
 
 
 

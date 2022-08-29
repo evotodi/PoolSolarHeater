@@ -16,6 +16,8 @@
 #define DEBUG 1
 // #define TESTING 1
 
+#define boolToStr(x) ((x)?"Yes":"No")
+
 #define DS_TEMP_PRECISION 12
 
 #define ONE_WIRE_BUS   D2
@@ -23,6 +25,7 @@
 #define MCP_DOUT       D7
 #define MCP_CLK        D5
 #define MCP_CS         D8
+#define RLY_PIN        D1
 
 #define ADC_LIGHT      0
 #define ADC_FRAME1     1
@@ -30,11 +33,18 @@
 #define ADC_AMBIANT    3
 
 #define DARK_DEFAULT   400
-#define GPM_DEFAULT    5
+#define GPM_DEFAULT    5.0
+#define SP_DEFAULT     95.0
 
 #define WATTS_MIN      100.0
-#define LOOP_RUN_DLY     3*1E3
-#define LOOP_SLEEP_DLY   600*1E3
+
+#define LOOP_DAT_DLY     3*1E3
+#define LOOP_PROC_DLY    5*1E3
+#define LOOP_PUB_DLY     15*1E3
+
+#define LOOP_SLEEP_DLY   30*1E3
+
+
 
 //>> Structures
 struct NTCSettings
