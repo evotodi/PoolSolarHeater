@@ -1,52 +1,4 @@
-#include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <WiFiUdp.h>
-#include <NTPClient.h>
-#include <TimeLib.h>
-#include <Homie.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-#include <EasyStringStream.h>
-#include "MCP_ADC.h"
-#include <Thermistor.h>
-
-#define DEBUG 1
-
-#define DS_TEMP_PRECISION 9
-
-#define ONE_WIRE_BUS   D2
-#define MCP_DIN        D6
-#define MCP_DOUT       D7
-#define MCP_CLK        D5
-#define MCP_CS         D8
-
-#define ADC_LIGHT      0
-#define ADC_FRAME1     1
-#define ADC_FRAME2     2
-
-#define DARK_DEFAULT   400
-#define FSR_DEFAULT    10000
-#define FTR_DEFAULT    10000
-#define FTN_DEFAULT    25
-#define FBC_DEFAULT    3950
-#define FVCC_DEFAULT   4.55
-#define FREF_DEFAULT   4.55
-
-#define LOOP_RUN_DLY     3*1E3
-#define LOOP_SLEEP_DLY   600*1E3
-
-////> Function Prototypes
-time_t getNtpTime();
-const char* getTimestamp();
-void setupHandler();
-void loopHandler();
-void strToAddress(const String addr, DeviceAddress deviceAddress);
-void printAddress(DeviceAddress deviceAddress);
-void setupOwSensors();
-int16_t mcpReadCallback(uint8_t channel);
-void validateHomieSettings();
-void testing();
-////< Function Prototypes
+#include "main.h"
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
@@ -64,8 +16,13 @@ MCP3204 mcp(MCP_DIN, MCP_DOUT, MCP_CLK);
 char timestampStrBuf[1024];
 EasyStringStream timestampStream(timestampStrBuf, 1024);
 
-Thermistor frame1(mcpReadCallback, 5.0, 5.0, 4096, 10000, 10000, 25, 3950, 5, 30);
-Thermistor frame2(mcpReadCallback, 5.0, 5.0, 4096, 10000, 10000, 25, 3950, 5, 30);
+Thermistor ntcFrame1(mcpReadCallback, 5.0, 5.0, 4096, 10000, 10000, 25, 3950, 5, 30);
+Thermistor ntcFrame2(mcpReadCallback, 5.0, 5.0, 4096, 10000, 10000, 25, 3950, 5, 30);
+Thermistor ntcAmbiant(mcpReadCallback, 5.0, 5.0, 4096, 100500, 100000, 25, 3950, 5, 30);
+
+NTCSettings frame1Settings;
+NTCSettings frame2Settings;
+NTCSettings ambiantSettings;
 
 unsigned long currentMillis = 0;
 unsigned long intervalData = LOOP_RUN_DLY;
@@ -75,46 +32,79 @@ unsigned long previousMillisHB = 0;
 
 bool isDark = true;
 int16_t light = 0;
-double tin = -127.0;
-double tout = -127.0;
-double f1 = -127.0;
-double f2 = -127.0;
+float tin = -127.0;
+float tout = -127.0;
+float f1 = -127.0;
+float f2 = -127.0;
+float air = -127.0;
+float wattsT = 0.0;
+float wattsF1 = 0.0;
+float wattsF2 = 0.0;
 
 HomieNode infoNode("info", "Info", "string");
 HomieNode tempNode("temp", "Temps", "float");
 HomieNode lightNode("light", "Light", "float");
 
 HomieSetting<long> darkSetting("dark", "minimum light val");
+HomieSetting<double> gpmSetting("gpm", "flow in gpm");
 
-HomieSetting<double> frameSrSetting("framesr", "frames series res");
-HomieSetting<double> frameTrSetting("frametr", "frame ntc res");
-HomieSetting<double> frameBcSetting("framebc", "frame bCoef");
-HomieSetting<double> frameVccSetting("framevcc", "frame vcc");
+HomieSetting<const char *> frame1Setting("frame1", "frame 1 settings");
+HomieSetting<const char *> frame2Setting("frame2", "frame 2 settings");
+HomieSetting<const char *> ambiantSetting("ambiant", "ambiant settings");
 
+HomieSetting<const char *> tinAddrSetting("tin_addr", "tin addr");
+HomieSetting<const char *> toutAddrSetting("tout_addr", "tout addr");
+
+#ifdef TESTING
 void testing()
 {
   delay(200);  
+  Serial.println("Testing!!!");
+
+  String frameData = "vcc=4.55,adcRef=4.55,serRes=10000,ntcRes=10000,tempNom=25,bc=3950,samples=5,sampleDly=20";
+  NTCSettings fs;
+
+  sscanf(frameData.c_str(), "vcc=%f,adcRef=%f,serRes=%d,ntcRes=%d,tempNom=%d,bc=%d,samples=%d,sampleDly=%d",
+      &fs.vcc, &fs.adcRef, &fs.serRes, &fs.ntcRes, &fs.tempNom, &fs.bc, &fs.samples, &fs.sampleDly
+      );
+
+  Serial.print("VCC = "); Serial.println(fs.vcc);
+  Serial.print("ADC Ref = "); Serial.println(fs.adcRef);
+  Serial.print("Ser Res = "); Serial.println(fs.serRes);
+  Serial.print("NTC Res = "); Serial.println(fs.ntcRes);
+  Serial.print("Temp Nom = "); Serial.println(fs.tempNom);
+  Serial.print("bCoef = "); Serial.println(fs.bc);
+  Serial.print("Samples = "); Serial.println(fs.samples);
+  Serial.print("Sample Delay = "); Serial.println(fs.sampleDly);
+  
 }
+#endif
 
 void setup() {
   pinMode(LED_BUILTIN_AUX, OUTPUT);
-
+  #ifdef DEBUG
   Serial.begin(115200);
+  #else
+  Homie.disableLogging();
+  #endif
+
   WiFi.mode(WIFI_STA);
 
-  // testing();
-  // delay(60000);
-  // delay(60000);
-  // delay(60000);
-  
+  #ifdef TESTING
+  testing();
+  while(true){
+    delay(60000);
+  }
+  #endif
+    
   validateHomieSettings();
 
-  setupOwSensors();
-
   mcp.begin(MCP_CS);
+  #ifdef DEBUG
   Serial.print("ADC channels = "); Serial.println(mcp.channels());
   Serial.print("ADC spi speed = "); Serial.print(mcp.getSPIspeed()); Serial.println(" Hz");
   Serial.print("ADC max value = "); Serial.println(mcp.maxValue());
+  #endif
 
   Homie_setFirmware("bare-minimum", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
@@ -123,10 +113,14 @@ void setup() {
   tempNode.advertise("tin").setName("TempIn").setDatatype("float").setUnit("F");
   tempNode.advertise("tout").setName("TempOut").setDatatype("float").setUnit("F"); 
   tempNode.advertise("f1").setName("Frame1").setDatatype("float").setUnit("F");
-  tempNode.advertise("f2").setName("Frame2").setDatatype("float").setUnit("F");                                    
+  tempNode.advertise("f2").setName("Frame2").setDatatype("float").setUnit("F");
+  tempNode.advertise("air").setName("Air").setDatatype("float").setUnit("F");
   lightNode.advertise("light").setName("LightLvl").setDatatype("float").setUnit("%");   
   lightNode.advertise("dark").setName("IsDark").setDatatype("boolean");
   infoNode.advertise("timestamp").setName("Timestamp").setDatatype("string").setUnit("");                                                                          
+  infoNode.advertise("watts_t").setName("Watts Total").setDatatype("float").setUnit("W");
+  infoNode.advertise("watts_f1").setName("Watts F1").setDatatype("float").setUnit("W");
+  infoNode.advertise("watts_f2").setName("Watts F2").setDatatype("float").setUnit("W");
 
   Homie.setup();
 }
@@ -143,17 +137,32 @@ void setupHandler() {
   setSyncProvider(getNtpTime);
   setSyncInterval(600);
 
-  frame1.setSeriesResistor(frameSrSetting.get());
-  frame1.setThermistorNominal(frameTrSetting.get());
-  frame1.setBCoef(frameBcSetting.get());
-  frame1.setVcc(frameVccSetting.get());
-  frame1.setAnalogReference(frameVccSetting.get());
+  frame1Settings = parseNTCSettings(frame1Setting.get(), "Frame 1");
+  frame2Settings = parseNTCSettings(frame2Setting.get(), "Frame 2");
+  ambiantSettings = parseNTCSettings(ambiantSetting.get(), "Ambiant");
 
-  frame2.setSeriesResistor(frameSrSetting.get());
-  frame2.setThermistorNominal(frameTrSetting.get());
-  frame2.setBCoef(frameBcSetting.get());
-  frame2.setVcc(frameVccSetting.get());
-  frame2.setAnalogReference(frameVccSetting.get());
+  ntcFrame1.setSeriesResistor(frame1Settings.serRes);
+  ntcFrame1.setThermistorNominal(frame1Settings.ntcRes);
+  ntcFrame1.setBCoef(frame1Settings.bc);
+  ntcFrame1.setTemperatureNominal(frame1Settings.tempNom);
+  ntcFrame1.setVcc(frame1Settings.vcc);
+  ntcFrame1.setAnalogReference(frame1Settings.adcRef);
+  
+  ntcFrame2.setSeriesResistor(frame2Settings.serRes);
+  ntcFrame2.setThermistorNominal(frame2Settings.ntcRes);
+  ntcFrame2.setBCoef(frame2Settings.bc);
+  ntcFrame2.setTemperatureNominal(frame2Settings.tempNom);
+  ntcFrame2.setVcc(frame2Settings.vcc);
+  ntcFrame2.setAnalogReference(frame2Settings.adcRef);
+
+  ntcAmbiant.setSeriesResistor(ambiantSettings.serRes);
+  ntcAmbiant.setThermistorNominal(ambiantSettings.ntcRes);
+  ntcAmbiant.setBCoef(ambiantSettings.bc);
+  ntcAmbiant.setTemperatureNominal(ambiantSettings.tempNom);
+  ntcAmbiant.setVcc(ambiantSettings.vcc);
+  ntcAmbiant.setAnalogReference(ambiantSettings.adcRef);
+
+  setupOwSensors();
 
 }
 
@@ -164,7 +173,9 @@ void loopHandler()
   // Process data
   if(currentMillis - previousMillisData > intervalData || previousMillisData == 0) {
     if (year() == 1970) {
+      #ifdef DEBUG
       Serial.println("Force update NTP");
+      #endif
       timeClient.forceUpdate();
       time_t tt;
       tt = getNtpTime();
@@ -183,12 +194,31 @@ void loopHandler()
     Homie.getLogger() << "Tout = " << tout << " °F" << endl;
     yield();
 
-    f1 = frame1.readTempF(ADC_FRAME1);
+    wattsT = calcWatts(tin, tout);
+    Homie.getLogger() << "Watts-T = " << wattsT << endl;
+    Serial.printf("WATTS-T = %.5f\n", wattsT);
+    yield();
+
+    air = ntcAmbiant.readTempF(ADC_AMBIANT);
+    Homie.getLogger() << "Air = " << air << " °F" << endl;
+    yield();
+
+    f1 = ntcFrame1.readTempF(ADC_FRAME1);
     Homie.getLogger() << "Frame 1 = " << f1 << " °F" << endl;
     yield();
 
-    f2 = frame1.readTempF(ADC_FRAME2);
+    wattsF1 = calcWatts(air, f1);
+    Homie.getLogger() << "Watts-F1 = " << wattsF1 << endl;
+    Serial.printf("WATTS-F1 = %.5f\n", wattsF1);
+    yield();
+
+    f2 = ntcFrame1.readTempF(ADC_FRAME2);
     Homie.getLogger() << "Frame 2 = " << f2 << " °F" << endl;
+    yield();
+
+    wattsF2 = calcWatts(air, f2);
+    Homie.getLogger() << "Watts-F2 = " << wattsF2 << endl;
+    Serial.printf("WATTS-F2 = %.5f\n", wattsF2);
     yield();
 
     light = mcp.analogRead(ADC_LIGHT);
@@ -207,12 +237,16 @@ void loopHandler()
     }
     
     infoNode.setProperty("timestamp").send(getTimestamp());
+    infoNode.setProperty("watts_t").send(String(wattsT));
+    infoNode.setProperty("watts_f1").send(String(wattsF1));
+    infoNode.setProperty("watts_f2").send(String(wattsF2));
     lightNode.setProperty("light").send(String(light));
     lightNode.setProperty("dark").send(isDark ? "true" : "false");
     tempNode.setProperty("tin").send(String(tin));
     tempNode.setProperty("tout").send(String(tout));
     tempNode.setProperty("f1").send(String(f1));
     tempNode.setProperty("f2").send(String(f2));
+    tempNode.setProperty("air").send(String(air));
 
     yield();
 
@@ -233,8 +267,7 @@ void loopHandler()
 time_t getNtpTime()
 {
   timeClient.forceUpdate();
-  Serial.print("NTP Updated. Current time is ");
-  Serial.println(timeClient.getEpochTime());
+  Homie.getLogger() << "NTP Updated. Current time is " << timeClient.getEpochTime() << endl << endl;
   return time_t(timeClient.getEpochTime());
 }
 
@@ -314,19 +347,22 @@ void printAddress(DeviceAddress deviceAddress)
 
 void setupOwSensors()
 {
+  #ifdef DEBUG
   Serial.print("Locating devices...");
-  Homie.getLogger() << "THIS IS HERE IN SETUP!" << endl;
-  
+  #endif
   sensors.begin();
   sensors.setWaitForConversion(true);
   
+  #ifdef DEBUG
   Serial.print("Found ");
   Serial.print(sensors.getDeviceCount(), DEC);
   Serial.println(" devices.");
+  #endif
   for (size_t i = 0; i < sensors.getDeviceCount(); i++)
   {
     if (sensors.getAddress(tempDeviceAddress, i))
     {
+      #ifdef DEBUG
       Serial.print("Found device ");
       Serial.print(i, DEC);
       Serial.print(" with address: ");
@@ -335,20 +371,28 @@ void setupOwSensors()
 
       Serial.print("Setting resolution to ");
       Serial.println(DS_TEMP_PRECISION, DEC);
-
+      #endif
       // set the resolution to TEMPERATURE_PRECISION bit (Each Dallas/Maxim device is capable of several different resolutions)
       sensors.setResolution(tempDeviceAddress, DS_TEMP_PRECISION);
 
+      #ifdef DEBUG
       Serial.print("Resolution actually set to: ");
       Serial.print(sensors.getResolution(tempDeviceAddress), DEC);
       Serial.println();
+      #endif
     } else {
+      #ifdef DEBUG
       Serial.print("Found ghost device at ");
       Serial.print(i, DEC);
       Serial.print(" but could not detect address. Check power and cabling");
+      #endif
     }
   }
   
+  strToAddress(tinAddrSetting.get(), tempSensorIn);
+  strToAddress(toutAddrSetting.get(), tempSensorOut);
+
+  #ifdef DEBUG
   if (sensors.isConnected(tempSensorIn)){
     Serial.print("Temp sensor IN Address: "); printAddress(tempSensorIn); Serial.println();
     Serial.print("Temp sensor IN resolution: "); Serial.print(sensors.getResolution(tempSensorIn), DEC); Serial.println();
@@ -362,6 +406,7 @@ void setupOwSensors()
   }else{
     Serial.println("Temp sensor OUT is not connected !");
   }  
+  #endif
 }
 
 int16_t mcpReadCallback(uint8_t channel)
@@ -375,20 +420,54 @@ void validateHomieSettings()
     return candidate > 0;
   });
 
-  frameSrSetting.setDefaultValue(FSR_DEFAULT).setValidator([] (double candidate) {
-    return candidate > 0;
-  });
-
-  frameTrSetting.setDefaultValue(FTR_DEFAULT).setValidator([] (double candidate) {
-    return candidate > 0;
-  });
-
-  frameBcSetting.setDefaultValue(FBC_DEFAULT).setValidator([] (double candidate) {
-    return candidate > 0;
-  });
-
-  frameVccSetting.setDefaultValue(FVCC_DEFAULT).setValidator([] (double candidate) {
+  gpmSetting.setDefaultValue(GPM_DEFAULT).setValidator([] (double candidate) {
     return candidate > 0;
   });
 }
+
+NTCSettings parseNTCSettings(const char * settings, const char * name)
+{
+  NTCSettings fs;
+
+  sscanf(settings, "vcc=%f,adcRef=%f,serRes=%d,ntcRes=%d,tempNom=%d,bc=%d,samples=%d,sampleDly=%d",
+      &fs.vcc, &fs.adcRef, &fs.serRes, &fs.ntcRes, &fs.tempNom, &fs.bc, &fs.samples, &fs.sampleDly
+      );
+
+  Homie.getLogger() << "Parsed " << name << " settings:" << endl;
+  Homie.getLogger() << "VCC = " << fs.vcc << endl;
+  Homie.getLogger() << "ADC Ref = " << fs.adcRef << endl;
+  Homie.getLogger() << "Ser Res = " << fs.serRes << endl;
+  Homie.getLogger() << "NTC Res = " << fs.ntcRes << endl;
+  Homie.getLogger() << "Temp Nom = " << fs.tempNom << endl;
+  Homie.getLogger() << "bCoef = " << fs.bc << endl;
+  Homie.getLogger() << "Samples = " << fs.samples << endl;
+  Homie.getLogger() << "Sample Delay = " << fs.sampleDly << endl;
+  Homie.getLogger() << endl;
+
+  return fs;
+}
+
+float calcWatts(float tempIn, float tempOut)
+{
+  const float dt = fabs(tempIn - tempOut);
+  const float gpm = float(gpmSetting.get());
+  const float c = float(0.00682);
+  float rtn;
+  rtn = (gpm * dt) / c;
+  if(rtn < WATTS_MIN){
+    return 0.0;
+  }
+  return rtn;
+}
+
+
+
+
+
+
+
+
+
+
+
 
