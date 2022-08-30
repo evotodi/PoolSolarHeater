@@ -4,3 +4,6 @@
 .vscode/launch.json
 .vscode/ipch
 /temp/
+/cmake-build-debug/
+/cmake-build-nodemcu/
+/CMakeListsPrivate.txt

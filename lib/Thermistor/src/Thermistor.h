@@ -11,18 +11,24 @@
 
 typedef int16_t (*CallBackPtr)(uint8_t);
 
+struct ThermistorSettings
+{
+    double vcc;
+    double analogReference;
+    double seriesResistor;
+    double thermistorNominal;
+    double temperatureNominal;
+    double adcMax;
+    double bCoef;
+    int samples;
+    int sampleDelay;
+};
+
 class Thermistor {
   protected:
     const CallBackPtr _callback;
-    double _vcc;
-    double _analogReference;
-    double _adcMax;
-    double _seriesResistor;
-    double _thermistorNominal;
-    double _temperatureNominal;
-    double _bCoef;
-    const int _samples;
-    const int _sampleDelay;
+    ThermistorSettings _settings;
+    char dumpStr[100]{};
 
   public:
 
@@ -38,7 +44,7 @@ class Thermistor {
     * arg 9: samples: Number of analog samples to average (for smoothing)
     * arg 10: sampleDelay: Milliseconds between samples (for smoothing)
     */
-    Thermistor(CallBackPtr callback, double vcc, double analogReference, int adcMax, int seriesResistor, int thermistorNominal, int temperatureNominal, int bCoef, int samples, int sampleDelay);
+    Thermistor(CallBackPtr callback, ThermistorSettings settings);
 
     // Smoothed ADC value
     double readADC(uint8_t channel) const;
@@ -61,17 +67,19 @@ class Thermistor {
     // convert Celsius to Fahrenheit
     double cToF(double c) const;
 
-    void setSeriesResistor(double res);
+    void setSeriesResistor(const double * res);
 
-    void setThermistorNominal(double val);
+    void setThermistorNominal(const double * val);
 
-    void setTemperatureNominal(double val);
+    void setTemperatureNominal(const double * val);
 
-    void setBCoef(double val);
+    void setBCoef(const double * val);
 
-    void setVcc(double val);
+    void setVcc(const double * val);
 
-    void setAnalogReference(double val);
+    void setAnalogReference(const double * val);
+
+    char * dumpSettings(const ThermistorSettings * ts = nullptr);
 };
 
 #endif

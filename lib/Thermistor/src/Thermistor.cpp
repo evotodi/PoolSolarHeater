@@ -24,36 +24,21 @@
 
 Thermistor::Thermistor(
 	CallBackPtr callback,
-	double vcc,
-	double analogReference,
-	int adcMax,
-	int seriesResistor,
-	int thermistorNominal,
-	int temperatureNominal,
-	int bCoef,
-	int samples,
-	int sampleDelay):
+    ThermistorSettings settings):
 		_callback(callback),
-		_vcc(vcc),
-		_analogReference(analogReference),
-		_adcMax(adcMax),
-		_seriesResistor(seriesResistor),
-		_thermistorNominal(thermistorNominal),
-		_temperatureNominal(temperatureNominal),
-		_bCoef(bCoef),
-		_samples(samples),
-		_sampleDelay(sampleDelay) {
+		_settings(settings)
+		 {
 
 }
 
 double Thermistor::readADC(uint8_t channel) const {
 	unsigned sum = 0;
-	for(int i=0; i<_samples-1; i++) {
+	for(int i=0; i<_settings.samples-1; i++) {
 		sum += _callback(channel);
-		delay(_sampleDelay);
+		delay(_settings.sampleDelay);
 	}
 	sum += _callback(channel);
-	return (1. * sum) / _samples;
+	return (1. * sum) / _settings.samples;
 }
 
 double Thermistor::readTempK(uint8_t channel) const {
@@ -69,8 +54,8 @@ double Thermistor::readTempF(uint8_t channel) const {
 }
 
 double Thermistor::adcToK(double adc) const {
-	double resistance = -1.0 * (_analogReference * _seriesResistor * adc) / (_analogReference * adc - _vcc * _adcMax);
-	double steinhart = (1.0 / (_temperatureNominal - ABS_ZERO)) + (1.0 / _bCoef) * log(resistance / _thermistorNominal);
+	double resistance = -1.0 * (_settings.analogReference * _settings.seriesResistor * adc) / (_settings.analogReference * adc - _settings.vcc * _settings.adcMax);
+	double steinhart = (1.0 / (_settings.temperatureNominal - ABS_ZERO)) + (1.0 / _settings.bCoef) * log(resistance / _settings.thermistorNominal);
 	double kelvin = 1.0 / steinhart;
 	return kelvin;
 }
@@ -84,32 +69,50 @@ double Thermistor::cToF(double c) const {
 	return (c * 1.8) + 32;
 }
 
-void Thermistor::setSeriesResistor(double res)
+void Thermistor::setSeriesResistor(const double * res)
 {
-	this->_seriesResistor = res;
+    _settings.seriesResistor = *res;
 }
 
-void Thermistor::setThermistorNominal(double val)
+void Thermistor::setThermistorNominal(const double * val)
 {
-	this->_thermistorNominal = val;
+    _settings.thermistorNominal = *val;
 }
 
-void Thermistor::setTemperatureNominal(double val)
+void Thermistor::setTemperatureNominal(const double * val)
 {
-	this->_temperatureNominal = val;
+    _settings.temperatureNominal = *val;
 }
 
-void Thermistor::setBCoef(double val)
+void Thermistor::setBCoef(const double * val)
 {
-	this->_bCoef = val;
+    _settings.bCoef = *val;
 }
 
-void Thermistor::setVcc(double val)
+void Thermistor::setVcc(const double * val)
 {
-	this->_vcc = val;
+    _settings.vcc = *val;
 }
 
-void Thermistor::setAnalogReference(double val)
+void Thermistor::setAnalogReference(const double * val)
 {
-	this->_analogReference = val;
+    _settings.analogReference = *val;
+}
+
+char * Thermistor::dumpSettings(const ThermistorSettings * ts) {
+    // vcc=4.55,adcRef=4.55,serRes=120000,ntcRes=100000,tempNom=25,bc=3950,samples=5,sampleDly=20
+    if(ts == nullptr){
+        sprintf(dumpStr, "vcc=%.2f,adcRef=%.2f,serRes=%.0f,ntcRes=%.0f,tempNom=%.0f,bc=%.0f,samples=%i,sampleDly=%i",
+                _settings.vcc, _settings.analogReference, _settings.seriesResistor, _settings.thermistorNominal,
+                _settings.temperatureNominal, _settings.bCoef, _settings.samples, _settings.sampleDelay
+        );
+    }else{
+        sprintf(dumpStr, "vcc=%.2f,adcRef=%.2f,serRes=%.0f,ntcRes=%.0f,tempNom=%.0f,bc=%.0f,samples=%i,sampleDly=%i",
+                ts->vcc, ts->analogReference, ts->seriesResistor, ts->thermistorNominal,
+                ts->temperatureNominal, ts->bCoef, ts->samples, ts->sampleDelay
+        );
+    }
+
+
+    return dumpStr;
 }
