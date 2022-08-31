@@ -17,11 +17,11 @@
       "enabled": true
     },
     "settings": {
-      "config": "{\"dark\": 400, \"gpm\":2.0, \"setpoint\": 75.0}",
-      "frame1": "{\"vcc\": 4.55, \"adcRef\": 4.55, \"serRes\": 10000, \"ntcRes\": 10000, \"tempNom\": 25, \"bc\": 3950, \"samples\": 5, \"sampleDly\": 20}",
-      "frame2": "{\"vcc\": 4.55, \"adcRef\": 4.55, \"serRes\": 10000, \"ntcRes\": 10000, \"tempNom\": 25, \"bc\": 3950, \"samples\": 5, \"sampleDly\": 20}",
-      "ambiant": "{\"vcc\": 4.55, \"adcRef\": 4.55, \"serRes\": 120000, \"ntcRes\": 100000, \"tempNom\": 25, \"bc\": 3950, \"samples\": 5, \"sampleDly\": 20}",
-      "tin": "{\"addr\": \"289D6F49F67A3CF8\", \"offset\": 0.8}",
-      "tout": "{\"addr\": \"283E4749F6C13C1A\", \"offset\": 0.0}"
+      "config": "dark=400;gpm=2.0;setpoint=75.0;minWatts=200.0;airDiff=5",
+      "frame1": "vcc=5.0;adcRef=5.0;serRes=9700;ntcRes=10000;tempNom=25;bc=3950;samples=5;sampleDly=20",
+      "frame2": "vcc=5.0;adcRef=5.0;serRes=10000;ntcRes=10000;tempNom=25;bc=3950;samples=5;sampleDly=20",
+      "ambiant": "vcc=5.0;adcRef=5.0;serRes=120000;ntcRes=100000;tempNom=25;bc=3950;samples=5;sampleDly=20",
+      "tin": "addr=289D6F49F67A3CF8;offset=0.8",
+      "tout": "addr=283E4749F6C13C1A;offset=0.0"
     }
   }

@@ -16,6 +16,10 @@ MCP3204 mcp(MCP_DIN, MCP_DOUT, MCP_CLK);
 char timestampStrBuf[1024];
 EasyStringStream timestampStream(timestampStrBuf, 1024);
 
+PSHConfig pshConfigs = {int16_t(DARK_DEFAULT), float(GPM_DEFAULT), float(SP_DEFAULT)};
+DTSetting tinSettings = {"0000000000000000", float(TOFS_DEFAULT)};
+DTSetting toutSettings = {"0000000000000000", float(TOFS_DEFAULT)};
+
 ThermistorSettings frame1Settings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
 ThermistorSettings frame2Settings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
 ThermistorSettings ambiantSettings = {5.0, 5.0, 100000, 100000, 25, 4096, 3950, 5, 20};
@@ -23,9 +27,6 @@ ThermistorSettings ambiantSettings = {5.0, 5.0, 100000, 100000, 25, 4096, 3950, 
 Thermistor ntcFrame1(mcpReadCallback, frame1Settings);
 Thermistor ntcFrame2(mcpReadCallback, frame2Settings);
 Thermistor ntcAmbiant(mcpReadCallback, ambiantSettings);
-
-DynamicJsonDocument doc(256);
-DeserializationError jsonError;
 
 unsigned long currentMillis = 0;
 unsigned long intervalData = LOOP_DAT_DLY;
@@ -43,10 +44,6 @@ unsigned long previousMillisHB = 0;
 char stayDarkCnt = 0;
 int timeOffset = 0;
 
-float setpoint = float(SP_DEFAULT);
-int16_t dark = int16_t(DARK_DEFAULT);
-float gpm = float(GPM_DEFAULT);
-
 bool isDark = false;
 bool realDark = false;
 bool pumpOn = false;
@@ -55,12 +52,8 @@ bool atSetpoint = false;
 int circLoopOffCnt = 0;
 int circLoopOnCnt = 0;
 int16_t light = 0;
-String tinAddr = "0000000000000000";
 float tin = -127.0;
-float tinOffset = 0;
-String toutAddr = "0000000000000000";
 float tout = -127.0;
-float toutOffset = 0;
 float f1 = -127.0;
 float f2 = -127.0;
 float air = -127.0;
@@ -85,6 +78,24 @@ void testing()
   delay(200);  
   Serial.println("Testing!!!");
 
+    DTSetting fs{};
+    char a[18];
+    float b;
+
+//    sscanf("addr=283E4749F6C13C1A\t;offset=0.0", "addr=%[^\t];offset=%f", // NOLINT(cert-err34-c)
+//           &a, &b
+//    );
+
+    sscanf("addr=283E4749F6C13C1A;offset=0.1", "addr=%[0-9a-fA-F];offset=%f",
+           &a, &b
+    );
+
+    Serial.print("Address = "); Serial.println(a);
+    Serial.print("Offset = "); Serial.println(b);
+
+    while (true){
+        delay(60000);
+    }
 }
 #endif
 
@@ -127,8 +138,11 @@ void setup() {
     tempNode.advertise("f1").setName("Frame1").setDatatype("float").setUnit("F");
     tempNode.advertise("f2").setName("Frame2").setDatatype("float").setUnit("F");
     tempNode.advertise("air").setName("Air").setDatatype("float").setUnit("F");
+
     lightNode.advertise("light").setName("LightLvl").setDatatype("float").setUnit("%");
     lightNode.advertise("dark").setName("IsDark").setDatatype("boolean");
+    lightNode.advertise("real_dark").setName("RealDark").setDatatype("boolean");
+
     infoNode.advertise("timestamp").setName("Timestamp").setDatatype("string").setUnit("");
     infoNode.advertise("watts_t").setName("Watts Total").setDatatype("float").setUnit("W");
     infoNode.advertise("watts_f1").setName("Watts F1").setDatatype("float").setUnit("W");
@@ -163,9 +177,15 @@ void setupHandler() {
     setSyncInterval(600);
     yield();
 
+    pshConfigs = parsePSHSettings(configSetting.get(), "Config");
     frame1Settings = parseNTCSettings(frame1Setting.get(), "Frame 1");
     frame2Settings = parseNTCSettings(frame2Setting.get(), "Frame 2");
     ambiantSettings = parseNTCSettings(ambiantSetting.get(), "Ambiant");
+
+    tinSettings = parseDTSettings(tinSetting.get(), "Tin");
+    strToAddress(tinSettings.addr, tempSensorIn);
+    toutSettings = parseDTSettings(toutSetting.get(), "Tout");
+    strToAddress(toutSettings.addr, tempSensorOut);
     yield();
 
     ntcFrame1.setSeriesResistor(&frame1Settings.seriesResistor);
@@ -195,45 +215,6 @@ void setupHandler() {
     Homie.getLogger() << "Ambiant settings = " << ntcAmbiant.dumpSettings() << endl;
     yield();
 
-    // deserialize config key
-    jsonError = deserializeJson(doc, configSetting.get());
-    if (jsonError) {
-        Homie.getLogger() << "Config: 'config' deserialize failed: " << jsonError.c_str() << endl;
-    }else{
-        dark = doc["dark"].as<int16_t>();
-        gpm = doc["gpm"].as<float>();
-        setpoint = doc["setpoint"].as<float>();
-        Homie.getLogger() << "Dark = " << dark << " GPM = " << gpm << " Setpoint = " << setpoint << endl;
-    }
-    doc.clear();
-    yield();
-
-    // deserialize tin key
-    jsonError = deserializeJson(doc, tinSetting.get());
-    if (jsonError) {
-        Homie.getLogger() << "Config: 'tin' deserialize failed: " << jsonError.c_str() << endl;
-    }else{
-        tinAddr = doc["addr"].as<String>();
-        tinOffset = doc["offset"].as<float>();
-        strToAddress(tinAddr, tempSensorIn);
-        Homie.getLogger() << "Tin: addr = " << tinAddr << " offset = " << tinOffset << endl;
-    }
-    doc.clear();
-    yield();
-
-    // deserialize tin key
-    jsonError = deserializeJson(doc, toutSetting.get());
-    if (jsonError) {
-        Homie.getLogger() << "Config: 'tout' deserialize failed: " << jsonError.c_str() << endl;
-    }else{
-        toutAddr = doc["addr"].as<String>();
-        toutOffset = doc["offset"].as<float>();
-        strToAddress(toutAddr, tempSensorOut);
-        Homie.getLogger() << "Tout: addr = " << toutAddr << " offset = " << toutOffset << endl;
-    }
-    doc.clear();
-    yield();
-
     setupOwSensors();
 }
 
@@ -255,9 +236,9 @@ void loopHandler() {
         sensors.requestTemperatures();
         delay(100);
 
-        tin = sensors.getTempF(tempSensorIn) + tinOffset;
+        tin = sensors.getTempF(tempSensorIn) + tinSettings.offset;
         yield();
-        tout = sensors.getTempF(tempSensorOut) + toutOffset;
+        tout = sensors.getTempF(tempSensorOut) + toutSettings.offset;
         yield();
         wattsT = calcWatts(tin, tout);
         Homie.getLogger() << "Tin = " << tin << " °F " << "Tout = " << tout << " °F " << " Watts = " << wattsT << endl;
@@ -280,7 +261,7 @@ void loopHandler() {
         yield();
 
         light = mcp.analogRead(ADC_LIGHT);
-        if (light <= dark) {
+        if (light <= pshConfigs.dark) {
             isDark = true;
         } else {
             isDark = false;
@@ -349,8 +330,11 @@ void loopHandler() {
         infoNode.setProperty("watts_f1").send(String(wattsF1));
         infoNode.setProperty("watts_f2").send(String(wattsF2));
         infoNode.setProperty("pump").send(pumpOn ? "true" : "false");
+
         lightNode.setProperty("light").send(String(light));
         lightNode.setProperty("dark").send(isDark ? "true" : "false");
+        lightNode.setProperty("real_dark").send(realDark ? "true" : "false");
+
         tempNode.setProperty("tin").send(String(tin));
         tempNode.setProperty("tout").send(String(tout));
         tempNode.setProperty("f1").send(String(f1));
@@ -373,14 +357,14 @@ void loopHandler() {
 
 void doProcess()
 {
-    if(tin >= setpoint && !tempCheckPumpOn) {
+    if(tin >= pshConfigs.setpoint && !tempCheckPumpOn) {
         Homie.getLogger() << "Set point reached" << endl;
         turnPumpOff();
         atSetpoint = true;
         return;
     }
 
-    if(tin < (setpoint - float(SP_HYSTERESIS))){
+    if(tin < (pshConfigs.setpoint - float(SP_HYSTERESIS))){
         atSetpoint = false;
     }
 
@@ -582,32 +566,15 @@ int16_t mcpReadCallback(uint8_t channel) {
     return mcp.analogRead(channel);
 }
 
-ThermistorSettings parseNTCSettings(const char * json, const char * name)
+ThermistorSettings parseNTCSettings(const char * settings, const char * name)
 {
     ThermistorSettings fs{};
 
-//    sscanf(settings, "vcc=%lf,adcRef=%lf,serRes=%lf,ntcRes=%lf,tempNom=%lf,bc=%lf,samples=%i,sampleDly=%i", // NOLINT(cert-err34-c)
-//      &fs.vcc, &fs.analogReference, &fs.seriesResistor, &fs.thermistorNominal, &fs.temperatureNominal, &fs.bCoef, &fs.samples, &fs.sampleDelay
-//      );
+    sscanf(settings, "vcc=%lf;adcRef=%lf;serRes=%lf;ntcRes=%lf;tempNom=%lf;bc=%lf;samples=%i;sampleDly=%i", // NOLINT(cert-err34-c)
+      &fs.vcc, &fs.analogReference, &fs.seriesResistor, &fs.thermistorNominal, &fs.temperatureNominal, &fs.bCoef, &fs.samples, &fs.sampleDelay
+      );
 
-    jsonError = deserializeJson(doc, json);
-
-    if (jsonError) {
-        Homie.getLogger() << "Config: '" << name << "' deserialize failed: " << jsonError.c_str() << endl;
-    }else{
-        fs.vcc = doc["vcc"].as<float>();
-        fs.analogReference = doc["adcRef"].as<float>();
-        fs.seriesResistor = doc["serRes"].as<double>();
-        fs.thermistorNominal = doc["ntcRes"].as<double>();
-        fs.temperatureNominal = doc["tempNom"].as<double>();
-        fs.bCoef = doc["bc"].as<double>();
-        fs.samples = doc["samples"].as<int>();
-        fs.sampleDelay = doc["sampleDly"].as<int>();
-    }
-    doc.clear();
-
-
-    Homie.getLogger() << "Parsed " << name << " settings:" << endl;
+    Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
     Homie.getLogger() << "VCC = " << fs.vcc << endl;
     Homie.getLogger() << "ADC Ref = " << fs.analogReference << endl;
     Homie.getLogger() << "Ser Res = " << fs.seriesResistor << endl;
@@ -621,12 +588,50 @@ ThermistorSettings parseNTCSettings(const char * json, const char * name)
     return fs;
 }
 
+PSHConfig parsePSHSettings(const char * settings, const char * name)
+{
+    PSHConfig fs{};
+
+    sscanf(settings, "dark=%hi;gpm=%f;setpoint=%f;minWatts=%f;airDiff=%i", // NOLINT(cert-err34-c)
+           &fs.dark, &fs.gpm, &fs.setpoint, &fs.minWatts, &fs.airDiff
+    );
+
+    Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
+    Homie.getLogger() << "Dark = " << fs.dark << endl;
+    Homie.getLogger() << "GPM = " << fs.gpm << endl;
+    Homie.getLogger() << "Setpoint = " << fs.setpoint << endl;
+    Homie.getLogger() << "Min Watts = " << fs.minWatts << endl;
+    Homie.getLogger() << "Min Air->Frame Diff = " << fs.airDiff << endl;
+    Homie.getLogger() << endl;
+
+    return fs;
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat"
+DTSetting parseDTSettings(const char * settings, const char * name)
+{
+    DTSetting fs{};
+
+    sscanf(settings, "addr=%[0-9a-fA-F];offset=%f", // NOLINT(cert-err34-c)
+           &fs.addr, &fs.offset
+    );
+
+    Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
+    Homie.getLogger() << "Address = " << fs.addr << endl;
+    Homie.getLogger() << "Offset = " << fs.offset << endl;
+    Homie.getLogger() << endl;
+
+    return fs;
+}
+#pragma clang diagnostic pop
+
 float calcWatts(float tempIn, float tempOut) {
     const float dt = fabs(tempIn - tempOut); // NOLINT(cppcoreguidelines-narrowing-conversions,performance-type-promotion-in-math-fn)
     const auto c = float(0.00682);
     float rtn;
-    rtn = (gpm * dt) / c;
-    if (rtn < WATTS_MIN) {
+    rtn = (pshConfigs.gpm * dt) / c;
+    if (rtn < pshConfigs.minWatts) {
         return 0.0;
     }
     return rtn;
@@ -647,8 +652,8 @@ bool envAllowPump()
     }
 
 #ifndef NO_ENV_SP_CHECK
-    if(air < setpoint){
-        if(((int(f1) + int(f2)) / 2) < (int(air) + FRAME_TO_AIR_MIN_DIFF)){
+    if(air < pshConfigs.setpoint){
+        if(((int(f1) + int(f2)) / 2) < (int(air) + pshConfigs.airDiff)){
             Homie.getLogger() << "Env: Frame to air not enough diff" << endl;
             return false;
         }
