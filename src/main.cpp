@@ -639,7 +639,7 @@ float calcWatts(float tempIn, float tempOut) {
     return rtn;
 }
 
-bool envAllowPump()
+bool envAllowPump(bool overrideEnv)
 {
 #ifndef NO_ENV_HOUR_CHECK
     if(hour() < DAY_START_HOUR || hour() >= DAY_END_HOUR) {
@@ -653,8 +653,15 @@ bool envAllowPump()
         return false;
     }
 
+    if(!overrideEnv) {
+        if (wattsT <= float(0)) {
+            Homie.getLogger() << "Env: No watts from tin/tout" << endl;
+            return false;
+        }
+    }
+
 #ifndef NO_ENV_SP_CHECK
-    if(air < pshConfigs.setpoint){
+    if(air < pshConfigs.setpoint && !overrideEnv){
         if(((int(f1) + int(f2)) / 2) < (int(air) + pshConfigs.airDiff)){
             Homie.getLogger() << "Env: Frame to air not enough diff" << endl;
             return false;
@@ -665,9 +672,9 @@ bool envAllowPump()
     return true;
 }
 
-bool turnPumpOn()
+bool turnPumpOn(bool overrideEnv)
 {
-    if(!envAllowPump()){
+    if(!envAllowPump(overrideEnv)){
         Homie.getLogger() << "Env not allow pump on" << endl;
         turnPumpOff();
         return false;

@@ -94,10 +94,10 @@ ThermistorSettings parseNTCSettings(const char * settings, const char * name);
 PSHConfig parsePSHSettings(const char * settings, const char * name);
 DTSetting parseDTSettings(const char * settings, const char * name);
 float calcWatts(float tempIn, float tempOut);
-bool envAllowPump();
+bool envAllowPump(bool overrideEnv = false);
 void doProcess();
 void doCirculate();
-bool turnPumpOn();
+bool turnPumpOn(bool overrideEnv = false);
 bool turnPumpOff();
 #ifdef TESTING
 void testing();
