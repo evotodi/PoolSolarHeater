@@ -15,7 +15,7 @@
 
 #define DEBUG 1
 // #define TESTING 1
-#define NO_ENV_HOUR_CHECK 1
+//#define NO_ENV_HOUR_CHECK 1
 //#define NO_ENV_SP_CHECK 1
 
 #define boolToStr(x) ((x)?"Yes":"No")
@@ -28,7 +28,6 @@
 #define MCP_CLK        D5
 #define MCP_CS         D8
 #define RLY_PIN        D1
-#define LED_PIN        D0
 
 #define ADC_LIGHT      0
 #define ADC_AMBIANT    1
@@ -42,13 +41,12 @@
 
 #define WATTS_MIN      200.0
 
-#define LOOP_DAT_DLY      3*1E3
+#define LOOP_DAT_DLY      5*1E3
 #define LOOP_PROC_DLY     5*1E3
 #define LOOP_PUB_DLY      15*1E3
-#define LOOP_CIRC_ON_DLY  10*1E3
-#define LOOP_CIRC_OFF_DLY 60*1E3
+#define LOOP_CIRC_DLY     10*1E3
 
-#define LOOP_SLEEP_DLY   30*1E3
+#define LOOP_SLEEP_DLY   60*1E3
 
 #define TIME_OFFSET_DST  -14400
 #define TIME_OFFSET_ST  -18000
@@ -61,9 +59,9 @@
 #define DAY_END_HOUR     20  // GMT - TIME_OFFSET
 
 #define FRAME_TO_AIR_MIN_DIFF 5
-
-//>> Structures
-//<< Structures
+#define SP_HYSTERESIS 2.0 // Degrees under setpoint before turning pump on
+#define CIRC_LOOP_OFF_CNT 59 // Min of 2; (This * LOOP_CIRC_DLY) + LOOP_CIRC_DLY; 3 * 10 + 10 = 40 seconds
+#define CIRC_LOOP_ON_CNT 4 //Min of 2; (This * LOOP_CIRC_DLY) - LOOP_CIRC_DLY; 2 * 10 - 10 = 10 seconds
 
 //>> Function Prototypes
 time_t getNtpTime();
@@ -79,6 +77,7 @@ ThermistorSettings parseNTCSettings(const char * json, const char * name);
 float calcWatts(float tempIn, float tempOut);
 bool envAllowPump();
 void doProcess();
+void doCirculate();
 bool turnPumpOn();
 bool turnPumpOff();
 #ifdef TESTING

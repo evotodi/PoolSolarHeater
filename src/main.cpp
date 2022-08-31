@@ -34,10 +34,8 @@ unsigned long intervalProc = LOOP_PROC_DLY;
 unsigned long previousMillisProc = 0;
 unsigned long intervalPub = LOOP_PUB_DLY;
 unsigned long previousMillisPub = 0;
-unsigned long intervalCircOn = LOOP_CIRC_ON_DLY;
-unsigned long previousMillisCircOn = 0;
-unsigned long intervalCircOff = LOOP_CIRC_OFF_DLY;
-unsigned long previousMillisCircOff = 0;
+unsigned long intervalCirc = LOOP_CIRC_DLY;
+unsigned long previousMillisCirc = 0;
 
 unsigned long intervalHB = 1 * 1E3;
 unsigned long previousMillisHB = 0;
@@ -53,6 +51,9 @@ bool isDark = false;
 bool realDark = false;
 bool pumpOn = false;
 bool tempCheckPumpOn = false;
+bool atSetpoint = false;
+int circLoopOffCnt = 0;
+int circLoopOnCnt = 0;
 int16_t light = 0;
 String tinAddr = "0000000000000000";
 float tin = -127.0;
@@ -241,7 +242,7 @@ void loopHandler() {
 
     // Gather data
     if (currentMillis - previousMillisData > intervalData || previousMillisData == 0) {
-        Homie.getLogger() << "GATHER" << endl;
+        Homie.getLogger() << "GATHER:" << endl;
         if (year() == 1970) {
             Homie.getLogger() << "Force update NTP" << endl;
             timeClient.forceUpdate();
@@ -284,7 +285,7 @@ void loopHandler() {
         } else {
             isDark = false;
         }
-        Homie.getLogger() << "Light level = " << light << " Dark out = " << boolToStr(isDark) << endl;
+        Homie.getLogger() << "Light level = " << light << " Dark out = " << boolToStr(isDark) << " Real Dark = " << boolToStr(realDark) << endl;
         yield();
 
         if (isDark) {
@@ -305,6 +306,8 @@ void loopHandler() {
         yield();
 
         Homie.getLogger() << "Pump On = " << boolToStr(pumpOn) << endl;
+        Homie.getLogger() << "At setpoint = " << boolToStr(atSetpoint) << endl;
+        yield();
 
         Homie.getLogger() << endl;
         previousMillisData = currentMillis;
@@ -313,42 +316,34 @@ void loopHandler() {
 
     // Process data
     if (currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) {
-        Homie.getLogger() << "PROCESS" << endl;
+        Homie.getLogger() << "PROCESS:" << endl;
 
         doProcess();
 
+        Homie.getLogger() << endl;
         previousMillisProc = currentMillis;
     }
     yield();
 
     // Circulate On
-    if ((currentMillis - previousMillisCircOn > intervalCircOn || previousMillisCircOn == 0) && !tempCheckPumpOn) {
-        Homie.getLogger() << "Temp check begin" << endl;
-        if(turnPumpOn()){
-            tempCheckPumpOn = true;
-
-            if(previousMillisCircOff == 0){
-                previousMillisCircOff = currentMillis;
-            }
+    if (currentMillis - previousMillisCirc > intervalCirc || previousMillisCirc == 0) {
+        Homie.getLogger() << "CIRCULATE:" << endl;
+        if(!realDark && atSetpoint) {
+            doCirculate();
+        }else{
+            Homie.getLogger() << "Not allowed!  Real dark = " << boolToStr(realDark) << " At Setpoint = " << boolToStr(atSetpoint) << endl;
+            tempCheckPumpOn = false;
         }
 
-        previousMillisCircOn = currentMillis;
-    }
-    yield();
-
-    // Circulate Off
-    if ((currentMillis - previousMillisCircOff > intervalCircOff) && tempCheckPumpOn) {
-        Homie.getLogger() << "Temp check end" << endl;
-        tempCheckPumpOn = false;
-        turnPumpOff();
-
-        previousMillisCircOff = currentMillis;
+        Homie.getLogger() << endl;
+        previousMillisCirc = currentMillis;
     }
     yield();
 
     // Publish data
     if (currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
-        Homie.getLogger() << "PUBLISH" << endl;
+        Homie.getLogger() << "PUBLISH:" << endl;
+
         infoNode.setProperty("timestamp").send(getTimestamp());
         infoNode.setProperty("watts_t").send(String(wattsT));
         infoNode.setProperty("watts_f1").send(String(wattsF1));
@@ -362,6 +357,8 @@ void loopHandler() {
         tempNode.setProperty("f2").send(String(f2));
         tempNode.setProperty("air").send(String(air));
 
+        Homie.getLogger() << "Published data" << endl;
+        Homie.getLogger() << endl;
         previousMillisPub = currentMillis;
     }
     yield();
@@ -379,7 +376,12 @@ void doProcess()
     if(tin >= setpoint && !tempCheckPumpOn) {
         Homie.getLogger() << "Set point reached" << endl;
         turnPumpOff();
+        atSetpoint = true;
         return;
+    }
+
+    if(tin < (setpoint - float(SP_HYSTERESIS))){
+        atSetpoint = false;
     }
 
     if(tempCheckPumpOn){
@@ -388,6 +390,31 @@ void doProcess()
     }
 
     turnPumpOn();
+}
+
+void doCirculate()
+{
+    if(!tempCheckPumpOn && circLoopOffCnt < CIRC_LOOP_OFF_CNT){
+        Homie.getLogger() << "Not time yet. Off Cnt = " << circLoopOffCnt << endl;
+        circLoopOffCnt++;
+        circLoopOnCnt = 0;
+        return;
+    }
+
+    circLoopOffCnt = 0;
+    circLoopOnCnt++;
+
+    if(circLoopOnCnt >= CIRC_LOOP_ON_CNT){
+        Homie.getLogger() << "End of circulation. On Cnt = " << circLoopOnCnt << endl;
+        tempCheckPumpOn = false;
+        turnPumpOff();
+        circLoopOnCnt = 0;
+        return;
+    }
+
+    Homie.getLogger() << "Circulation on" << endl;
+    turnPumpOn();
+    tempCheckPumpOn = true;
 }
 
 time_t getNtpTime() {
