@@ -7,3 +7,4 @@
 /cmake-build-debug/
 /cmake-build-nodemcu/
 /CMakeListsPrivate.txt
+/cmake-build-nodemcu_ota/
