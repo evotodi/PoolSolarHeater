@@ -148,6 +148,7 @@ void setup() {
     infoNode.advertise("watts_f1").setName("Watts F1").setDatatype("float").setUnit("W");
     infoNode.advertise("watts_f2").setName("Watts F2").setDatatype("float").setUnit("W");
     infoNode.advertise("pump").setName("PumpOn").setDatatype("boolean");
+    infoNode.advertise("at_setpoint").setName("At Setpoint").setDatatype("boolean");
 
     Homie.setup();
 }
@@ -330,6 +331,7 @@ void loopHandler() {
         infoNode.setProperty("watts_f1").send(String(wattsF1));
         infoNode.setProperty("watts_f2").send(String(wattsF2));
         infoNode.setProperty("pump").send(pumpOn ? "true" : "false");
+        infoNode.setProperty("at_setpoint").send(atSetpoint ? "true" : "false");
 
         lightNode.setProperty("light").send(String(light));
         lightNode.setProperty("dark").send(isDark ? "true" : "false");
