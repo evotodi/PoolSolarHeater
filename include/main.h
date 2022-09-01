@@ -13,14 +13,17 @@
 #include <Thermistor.h>
 #include <ArduinoJson.h>
 #include <WiFiClient.h>
+#include <ESPAsyncWebServer.h>
 
 #define DEBUG 1
-#define TESTING 1
+//#define TESTING 1
+#define LOG_TO_TELNET 1
 //#define NO_ENV_HOUR_CHECK 1
 //#define NO_ENV_SP_CHECK 1
 
 #define boolToStr(x) ((x)?"Yes":"No")
 
+#define TELNET_PORT 23
 #define DS_TEMP_PRECISION 12
 
 #define ONE_WIRE_BUS   D2
@@ -87,6 +90,11 @@ int getTimeOffset(time_t t);
 const char* getTimestamp();
 void setupHandler();
 void loopHandler();
+#ifdef LOG_TO_TELNET
+void handleTelnet();
+void printHelp();
+void onHomieEvent(const HomieEvent& event);
+#endif
 void strToAddress(const String& addr, DeviceAddress deviceAddress);
 void printAddress(DeviceAddress deviceAddress);
 void setupOwSensors();

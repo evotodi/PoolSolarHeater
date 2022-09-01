@@ -11,6 +11,11 @@ DeviceAddress tempSensorOut; // = { 0x28, 0x3E, 0x47, 0x49, 0xF6, 0xC1, 0x3C, 0x
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 
+#ifdef LOG_TO_TELNET
+WiFiServer TelnetServer(TELNET_PORT);
+WiFiClient Telnet;
+#endif
+
 MCP3204 mcp(MCP_DIN, MCP_DOUT, MCP_CLK);
 
 char timestampStrBuf[1024];
@@ -47,10 +52,10 @@ int timeOffset = 0;
 bool isDark = false;
 bool realDark = false;
 bool pumpOn = false;
-bool tempCheckPumpOn = false;
+bool tempCheckPumpOn = true;
 bool allowGather = true;
 bool atSetpoint = false;
-int circLoopOffCnt = 0;
+int circLoopOffCnt = CIRC_LOOP_OFF_CNT - 1;
 int circLoopOnCnt = 0;
 int16_t light = 0;
 float tin = -127.0;
@@ -61,6 +66,8 @@ float air = -127.0;
 float wattsT = 0.0;
 float wattsF1 = 0.0;
 float wattsF2 = 0.0;
+
+int telnetBuffer;
 
 HomieNode infoNode("info", "Info", "string");
 HomieNode tempNode("temp", "Temps", "float");
@@ -148,15 +155,28 @@ void setup() {
     infoNode.advertise("pump").setName("PumpOn").setDatatype("boolean");
     infoNode.advertise("at_setpoint").setName("At Setpoint").setDatatype("boolean");
 
+#ifdef LOG_TO_TELNET
+    Homie.setLoggingPrinter(&Telnet);
+    Homie.onEvent(onHomieEvent);
+#endif
+
     Homie.setup();
 }
 
 void loop() {
     Homie.loop();
+#ifdef LOG_TO_TELNET
+    handleTelnet();
+#endif
 }
 
 void setupHandler() {
     // Code which should run AFTER the Wi-Fi is connected.
+
+#ifdef LOG_TO_TELNET
+    TelnetServer.begin();
+    Serial.print("Starting telnet server on port "); Serial.println(TELNET_PORT);
+#endif
     timeClient.begin();
     yield();
     timeClient.forceUpdate();
@@ -258,6 +278,8 @@ void loopHandler() {
         }
         yield();
 
+        Homie.getLogger() << "Allow to gather = " << boolToStr(allowGather) << endl;
+
         if(envAllowGather()) {
             tin = sensors.getTempF(tempSensorIn) + tinSettings.offset;
         }
@@ -330,7 +352,7 @@ void loopHandler() {
     // Circulate On
     if (currentMillis - previousMillisCirc > intervalCirc || previousMillisCirc == 0) {
         Homie.getLogger() << "CIRCULATE:" << endl;
-        if(!realDark && atSetpoint) {
+        if(!realDark || atSetpoint) {
             doCirculate();
         }else{
             Homie.getLogger() << "Not allowed!  Real dark = " << boolToStr(realDark) << " At Setpoint = " << boolToStr(atSetpoint) << endl;
@@ -420,9 +442,62 @@ void doCirculate()
     }
 
     Homie.getLogger() << "Circulation on" << endl;
-    turnPumpOn();
+    turnPumpOn(true);
     tempCheckPumpOn = true;
 }
+
+#ifdef LOG_TO_TELNET
+void handleTelnet(){
+    if (TelnetServer.hasClient()){
+        // client is connected
+        if (!Telnet || !Telnet.connected()){
+            if(Telnet) Telnet.stop();          // client disconnected
+            Telnet = TelnetServer.available(); // ready for new client
+        } else {
+            TelnetServer.available().stop();  // have client, block new conections
+        }
+    }
+
+    if (Telnet && Telnet.connected() && Telnet.available()){
+        // client input processing
+        while(Telnet.available()) {
+            telnetBuffer = Telnet.read();
+
+            switch (telnetBuffer) {
+                case 'h':
+                case '?':
+                    printHelp();
+                    break;
+                case 'r':
+                    Homie.reboot();
+                    break;
+                case 'X':
+                    HomieInternals::HomieClass::reset();
+                    break;
+                default:
+                    Serial.write(telnetBuffer);
+            }
+        }
+    }
+}
+
+void printHelp()
+{
+    Homie.getLogger() << "Help:" << endl;
+    Homie.getLogger() << "h or ? - This help" << endl;
+    Homie.getLogger() << "r - Reboot" << endl;
+    Homie.getLogger() << "X - Reset config to default!" << endl;
+
+    delay(2000);
+}
+
+void onHomieEvent(const HomieEvent& event)
+{
+    if(event.type == HomieEventType::OTA_STARTED){
+        TelnetServer.close();
+    }
+}
+#endif
 
 time_t getNtpTime() {
     timeClient.forceUpdate();
@@ -650,13 +725,10 @@ DTSetting parseDTSettings(const char * settings, const char * name)
 #pragma clang diagnostic pop
 
 float calcWatts(float tempIn, float tempOut) {
-    const float dt = tempIn - tempOut;
+    const float dt = tempOut - tempIn;
     const auto c = float(0.00682);
     float rtn;
     rtn = (pshConfigs.gpm * dt) / c;
-    if (rtn < pshConfigs.minWatts) {
-        return 0.0;
-    }
     return rtn;
 }
 
@@ -675,17 +747,19 @@ bool envAllowPump(bool overrideEnv)
     }
 
     if(!overrideEnv) {
-        if (wattsT <= float(0)) {
-            Homie.getLogger() << "Env: No watts from tin/tout" << endl;
+        if (wattsT <= pshConfigs.minWatts) {
+            Homie.getLogger() << "Env: Not enough watts from tin/tout" << endl;
             return false;
         }
     }
 
 #ifndef NO_ENV_SP_CHECK
-    if(air < pshConfigs.setpoint && !overrideEnv){
-        if(((int(f1) + int(f2)) / 2) < (int(air) + pshConfigs.airDiff)){
-            Homie.getLogger() << "Env: Frame to air not enough diff" << endl;
-            return false;
+    if(!overrideEnv) {
+        if (air < pshConfigs.setpoint) {
+            if (((int(f1) + int(f2)) / 2) < (int(air) + pshConfigs.airDiff)) {
+                Homie.getLogger() << "Env: Frame to air not enough diff" << endl;
+                return false;
+            }
         }
     }
 #endif
