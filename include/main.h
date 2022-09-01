@@ -12,9 +12,10 @@
 #include "MCP_ADC.h"
 #include <Thermistor.h>
 #include <ArduinoJson.h>
+#include <WiFiClient.h>
 
 #define DEBUG 1
-//#define TESTING 1
+#define TESTING 1
 //#define NO_ENV_HOUR_CHECK 1
 //#define NO_ENV_SP_CHECK 1
 
@@ -95,6 +96,7 @@ PSHConfig parsePSHSettings(const char * settings, const char * name);
 DTSetting parseDTSettings(const char * settings, const char * name);
 float calcWatts(float tempIn, float tempOut);
 bool envAllowPump(bool overrideEnv = false);
+bool envAllowGather();
 void doProcess();
 void doCirculate();
 bool turnPumpOn(bool overrideEnv = false);

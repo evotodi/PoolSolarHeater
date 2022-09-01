@@ -48,6 +48,7 @@ bool isDark = false;
 bool realDark = false;
 bool pumpOn = false;
 bool tempCheckPumpOn = false;
+bool allowGather = true;
 bool atSetpoint = false;
 int circLoopOffCnt = 0;
 int circLoopOnCnt = 0;
@@ -75,8 +76,8 @@ HomieSetting<const char *> toutSetting("tout", "tout json");
 #ifdef TESTING
 void testing()
 {
-  delay(200);  
-  Serial.println("Testing!!!");
+    delay(200);
+    Serial.println("Testing!!!");
 
     DTSetting fs{};
     char a[18];
@@ -113,9 +114,6 @@ void setup() {
 
 #ifdef TESTING
     testing();
-    while(true){
-      delay(60000);
-    }
 #endif
 
     mcp.begin(MCP_CS);
@@ -237,11 +235,42 @@ void loopHandler() {
         sensors.requestTemperatures();
         delay(100);
 
-        tin = sensors.getTempF(tempSensorIn) + tinSettings.offset;
+        if (isDark) {
+            intervalProc = LOOP_SLEEP_DLY;
+            intervalPub = LOOP_SLEEP_DLY;
+            previousMillisProc = 0;
+            stayDarkCnt++;
+            if(stayDarkCnt >= STAY_DARK_CNT){
+                realDark = true;
+                if(!tempCheckPumpOn){
+                    allowGather = false;
+                }
+            }
+            yield();
+        } else {
+            intervalProc = LOOP_PROC_DLY;
+            intervalPub = LOOP_PUB_DLY;
+            realDark = false;
+            stayDarkCnt = 0;
+        }
+        if(realDark){
+            stayDarkCnt = STAY_DARK_CNT;
+        }
         yield();
-        tout = sensors.getTempF(tempSensorOut) + toutSettings.offset;
+
+        if(envAllowGather()) {
+            tin = sensors.getTempF(tempSensorIn) + tinSettings.offset;
+        }
         yield();
-        wattsT = calcWatts(tin, tout);
+        if(envAllowGather()) {
+            tout = sensors.getTempF(tempSensorOut) + toutSettings.offset;
+        }
+        yield();
+        if(envAllowGather()) {
+            wattsT = calcWatts(tin, tout);
+        }else{
+            wattsT = float(0);
+        }
         Homie.getLogger() << "Tin = " << tin << " °F " << "Tout = " << tout << " °F " << " Watts = " << wattsT << endl;
         yield();
 
@@ -251,13 +280,21 @@ void loopHandler() {
 
         f1 = ntcFrame1.readTempF(ADC_FRAME1); // NOLINT(cppcoreguidelines-narrowing-conversions)
         yield();
-        wattsF1 = calcWatts(air, f1);
+        if(envAllowGather()) {
+            wattsF1 = calcWatts(air, f1);
+        }else{
+            wattsF1 = float(0);
+        }
         Homie.getLogger() << "Frame 1 = " << f1 << " °F " << " Watts = " << wattsF1 << endl;
         yield();
 
         f2 = ntcFrame2.readTempF(ADC_FRAME2); // NOLINT(cppcoreguidelines-narrowing-conversions)
         yield();
-        wattsF2 = calcWatts(air, f2);
+        if(envAllowGather()) {
+            wattsF2 = calcWatts(air, f2);
+        }else{
+            wattsF2 = float(0);
+        }
         Homie.getLogger() << "Frame 2 = " << f2 << " °F " << " Watts = " << wattsF2 << endl;
         yield();
 
@@ -268,23 +305,6 @@ void loopHandler() {
             isDark = false;
         }
         Homie.getLogger() << "Light level = " << light << " Dark out = " << boolToStr(isDark) << " Real Dark = " << boolToStr(realDark) << endl;
-        yield();
-
-        if (isDark) {
-            intervalProc = LOOP_SLEEP_DLY;
-            intervalPub = LOOP_SLEEP_DLY;
-            previousMillisProc = 0;
-            stayDarkCnt++;
-            if(stayDarkCnt >= STAY_DARK_CNT){
-                realDark = true;
-            }
-            yield();
-        } else {
-            intervalProc = LOOP_PROC_DLY;
-            intervalPub = LOOP_PUB_DLY;
-            realDark = false;
-            stayDarkCnt = 0;
-        }
         yield();
 
         Homie.getLogger() << "Pump On = " << boolToStr(pumpOn) << endl;
@@ -389,6 +409,7 @@ void doCirculate()
 
     circLoopOffCnt = 0;
     circLoopOnCnt++;
+    allowGather = true;
 
     if(circLoopOnCnt >= CIRC_LOOP_ON_CNT){
         Homie.getLogger() << "End of circulation. On Cnt = " << circLoopOnCnt << endl;
@@ -629,7 +650,7 @@ DTSetting parseDTSettings(const char * settings, const char * name)
 #pragma clang diagnostic pop
 
 float calcWatts(float tempIn, float tempOut) {
-    const float dt = fabs(tempIn - tempOut); // NOLINT(cppcoreguidelines-narrowing-conversions,performance-type-promotion-in-math-fn)
+    const float dt = tempIn - tempOut;
     const auto c = float(0.00682);
     float rtn;
     rtn = (pshConfigs.gpm * dt) / c;
@@ -672,6 +693,19 @@ bool envAllowPump(bool overrideEnv)
     return true;
 }
 
+bool envAllowGather()
+{
+    if(allowGather){
+        return true;
+    }
+
+    if(realDark){
+        return false;
+    }
+
+    return true;
+}
+
 bool turnPumpOn(bool overrideEnv)
 {
     if(!envAllowPump(overrideEnv)){
@@ -685,7 +719,7 @@ bool turnPumpOn(bool overrideEnv)
     }
     digitalWrite(RLY_PIN, HIGH);
     pumpOn = true;
-
+    allowGather = true;
     return true;
 }
 
