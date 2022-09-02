@@ -108,6 +108,7 @@ void doProcess();
 bool turnPumpOn();
 bool turnPumpOff();
 void toggleOverrideEnv();
+bool pumpOnHandler(const HomieRange& range, const String& value);
 #ifdef TESTING
 void testing();
 #endif

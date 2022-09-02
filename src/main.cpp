@@ -69,8 +69,8 @@ float wattsF1 = 0.0;
 float wattsF2 = 0.0;
 
 HomieNode infoNode("info", "Info", "string");
-HomieNode tempNode("temp", "Temps", "float");
-HomieNode lightNode("light", "Light", "float");
+HomieNode tempNode("temp", "Temps", "string");
+HomieNode lightNode("light", "Light", "string");
 
 HomieSetting<const char *> configSetting("config", "config kv");
 HomieSetting<const char *> frame1Setting("frame1", "frame 1 kv");
@@ -145,16 +145,16 @@ void setup() {
     tempNode.advertise("air").setName("Air").setDatatype("float").setUnit("F");
     tempNode.advertise("pool").setName("Pool").setDatatype("float").setUnit("F");
 
-    lightNode.advertise("light").setName("LightLvl").setDatatype("float").setUnit("%");
-    lightNode.advertise("dark").setName("IsDark").setDatatype("boolean");
-    lightNode.advertise("real_dark").setName("RealDark").setDatatype("boolean");
+    lightNode.advertise("light").setName("LightLvl").setDatatype("float").setUnit("");
+    lightNode.advertise("dark").setName("IsDark").setDatatype("string");
+    lightNode.advertise("real_dark").setName("RealDark").setDatatype("string");
 
     infoNode.advertise("timestamp").setName("Timestamp").setDatatype("string").setUnit("");
     infoNode.advertise("watts_t").setName("Watts Total").setDatatype("float").setUnit("W");
     infoNode.advertise("watts_f1").setName("Watts F1").setDatatype("float").setUnit("W");
     infoNode.advertise("watts_f2").setName("Watts F2").setDatatype("float").setUnit("W");
-    infoNode.advertise("pump").setName("PumpOn").setDatatype("boolean");
-    infoNode.advertise("at_setpoint").setName("At Setpoint").setDatatype("boolean");
+    infoNode.advertise("pump").setName("PumpOn").setDatatype("boolean").settable(pumpOnHandler);
+    infoNode.advertise("at_setpoint").setName("At Setpoint").setDatatype("string");
 
 #ifdef LOG_TO_TELNET
     Homie.setLoggingPrinter(&Telnet);
@@ -364,11 +364,11 @@ void loopHandler() {
         infoNode.setProperty("watts_f1").send(String(wattsF1));
         infoNode.setProperty("watts_f2").send(String(wattsF2));
         infoNode.setProperty("pump").send(pumpOn ? "true" : "false");
-        infoNode.setProperty("at_setpoint").send(atSetpoint ? "true" : "false");
+        infoNode.setProperty("at_setpoint").send(atSetpoint ? "Yes" : "No");
 
         lightNode.setProperty("light").send(String(light));
-        lightNode.setProperty("dark").send(isDark ? "true" : "false");
-        lightNode.setProperty("real_dark").send(realDark ? "true" : "false");
+        lightNode.setProperty("dark").send(isDark ? "Yes" : "No");
+        lightNode.setProperty("real_dark").send(realDark ? "Yes" : "No");
 
         tempNode.setProperty("tin").send(String(tin));
         tempNode.setProperty("tout").send(String(tout));
@@ -761,5 +761,20 @@ void toggleOverrideEnv()
     overrideEnv = !overrideEnv;
 }
 
+bool pumpOnHandler(const HomieRange& range, const String& value) {
+    if (value != "true" && value != "false") return false;
+    bool on = (value == "true");
+    if(on){
+        overrideEnv = true;
+        turnPumpOn();
+    }else{
+        overrideEnv = false;
+        turnPumpOff();
+    }
+    infoNode.setProperty("pump").send(value);
+    Homie.getLogger() << "Pump is forced " << (on ? "on" : "off") << endl;
+
+    return true;
+}
 
 
