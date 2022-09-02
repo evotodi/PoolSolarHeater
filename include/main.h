@@ -14,6 +14,7 @@
 #include <ArduinoJson.h>
 #include <WiFiClient.h>
 #include <ESPAsyncWebServer.h>
+#include <Oversampling.h>
 
 #define DEBUG 1
 //#define TESTING 1
@@ -38,7 +39,6 @@
 #define ADC_FRAME1     2
 #define ADC_FRAME2     3
 
-
 #define DARK_DEFAULT      400
 #define GPM_DEFAULT       5.0
 #define SP_DEFAULT        95.0
@@ -49,7 +49,6 @@
 #define LOOP_DAT_DLY      5*1E3
 #define LOOP_PROC_DLY     5*1E3
 #define LOOP_PUB_DLY      15*1E3
-#define LOOP_CIRC_DLY     10*1E3
 
 #define LOOP_SLEEP_DLY   60*1E3
 
@@ -99,16 +98,16 @@ void strToAddress(const String& addr, DeviceAddress deviceAddress);
 void printAddress(DeviceAddress deviceAddress);
 void setupOwSensors();
 int16_t mcpReadCallback(uint8_t channel);
-ThermistorSettings parseNTCSettings(const char * settings, const char * name);
+int16_t adcReadCallback(uint8_t channel);
+void parseNTCSettings(const char * settings, const char * name, ThermistorSettings * ts);
 PSHConfig parsePSHSettings(const char * settings, const char * name);
 DTSetting parseDTSettings(const char * settings, const char * name);
 float calcWatts(float tempIn, float tempOut);
-bool envAllowPump(bool overrideEnv = false);
-bool envAllowGather();
+bool envAllowPump();
 void doProcess();
-void doCirculate();
-bool turnPumpOn(bool overrideEnv = false);
+bool turnPumpOn();
 bool turnPumpOff();
+void toggleOverrideEnv();
 #ifdef TESTING
 void testing();
 #endif

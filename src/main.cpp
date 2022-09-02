@@ -28,10 +28,14 @@ DTSetting toutSettings = {"0000000000000000", float(TOFS_DEFAULT)};
 ThermistorSettings frame1Settings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
 ThermistorSettings frame2Settings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
 ThermistorSettings ambiantSettings = {5.0, 5.0, 100000, 100000, 25, 4096, 3950, 5, 20};
+ThermistorSettings poolSettings = {3.3, 3.3, 100000, 100000, 25, 4096, 3950, 5, 20};
 
 Thermistor ntcFrame1(mcpReadCallback, frame1Settings);
 Thermistor ntcFrame2(mcpReadCallback, frame2Settings);
 Thermistor ntcAmbiant(mcpReadCallback, ambiantSettings);
+Thermistor ntcPool(adcReadCallback, poolSettings);
+
+Oversampling adc(10, 12, 2);
 
 unsigned long currentMillis = 0;
 unsigned long intervalData = LOOP_DAT_DLY;
@@ -40,43 +44,39 @@ unsigned long intervalProc = LOOP_PROC_DLY;
 unsigned long previousMillisProc = 0;
 unsigned long intervalPub = LOOP_PUB_DLY;
 unsigned long previousMillisPub = 0;
-unsigned long intervalCirc = LOOP_CIRC_DLY;
-unsigned long previousMillisCirc = 0;
-
 unsigned long intervalHB = 1 * 1E3;
 unsigned long previousMillisHB = 0;
-
-char stayDarkCnt = 0;
-int timeOffset = 0;
 
 bool isDark = false;
 bool realDark = false;
 bool pumpOn = false;
-bool tempCheckPumpOn = true;
-bool allowGather = true;
 bool atSetpoint = false;
-int circLoopOffCnt = CIRC_LOOP_OFF_CNT - 1;
-int circLoopOnCnt = 0;
+bool overrideEnv = false;
+
 int16_t light = 0;
+int telnetBuffer;
+char stayDarkCnt = 0;
+int timeOffset = 0;
+
 float tin = -127.0;
 float tout = -127.0;
 float f1 = -127.0;
 float f2 = -127.0;
 float air = -127.0;
+float pool = -127.0;
 float wattsT = 0.0;
 float wattsF1 = 0.0;
 float wattsF2 = 0.0;
-
-int telnetBuffer;
 
 HomieNode infoNode("info", "Info", "string");
 HomieNode tempNode("temp", "Temps", "float");
 HomieNode lightNode("light", "Light", "float");
 
-HomieSetting<const char *> configSetting("config", "config jon");
-HomieSetting<const char *> frame1Setting("frame1", "frame 1 json");
-HomieSetting<const char *> frame2Setting("frame2", "frame 2 json");
-HomieSetting<const char *> ambiantSetting("ambiant", "ambiant json");
+HomieSetting<const char *> configSetting("config", "config kv");
+HomieSetting<const char *> frame1Setting("frame1", "frame 1 kv");
+HomieSetting<const char *> frame2Setting("frame2", "frame 2 kv");
+HomieSetting<const char *> ambiantSetting("ambiant", "ambiant kv");
+HomieSetting<const char *> poolSetting("pool", "pool kv");
 HomieSetting<const char *> tinSetting("tin", "tin json");
 HomieSetting<const char *> toutSetting("tout", "tout json");
 
@@ -143,6 +143,7 @@ void setup() {
     tempNode.advertise("f1").setName("Frame1").setDatatype("float").setUnit("F");
     tempNode.advertise("f2").setName("Frame2").setDatatype("float").setUnit("F");
     tempNode.advertise("air").setName("Air").setDatatype("float").setUnit("F");
+    tempNode.advertise("pool").setName("Pool").setDatatype("float").setUnit("F");
 
     lightNode.advertise("light").setName("LightLvl").setDatatype("float").setUnit("%");
     lightNode.advertise("dark").setName("IsDark").setDatatype("boolean");
@@ -197,9 +198,11 @@ void setupHandler() {
     yield();
 
     pshConfigs = parsePSHSettings(configSetting.get(), "Config");
-    frame1Settings = parseNTCSettings(frame1Setting.get(), "Frame 1");
-    frame2Settings = parseNTCSettings(frame2Setting.get(), "Frame 2");
-    ambiantSettings = parseNTCSettings(ambiantSetting.get(), "Ambiant");
+
+    parseNTCSettings(frame1Setting.get(), "Frame 1", &frame1Settings);
+    parseNTCSettings(frame2Setting.get(), "Frame 2", &frame2Settings);
+    parseNTCSettings(ambiantSetting.get(), "Ambiant", &ambiantSettings);
+    parseNTCSettings(poolSetting.get(), "Pool", &poolSettings);
 
     tinSettings = parseDTSettings(tinSetting.get(), "Tin");
     strToAddress(tinSettings.addr, tempSensorIn);
@@ -234,6 +237,15 @@ void setupHandler() {
     Homie.getLogger() << "Ambiant settings = " << ntcAmbiant.dumpSettings() << endl;
     yield();
 
+    ntcPool.setSeriesResistor(&poolSettings.seriesResistor);
+    ntcPool.setThermistorNominal(&poolSettings.thermistorNominal);
+    ntcPool.setBCoef(&poolSettings.bCoef);
+    ntcPool.setTemperatureNominal(&poolSettings.temperatureNominal);
+    ntcPool.setVcc(&poolSettings.vcc);
+    ntcPool.setAnalogReference(&poolSettings.analogReference);
+    Homie.getLogger() << "Pool settings = " << ntcPool.dumpSettings() << endl;
+    yield();
+
     setupOwSensors();
 }
 
@@ -262,9 +274,6 @@ void loopHandler() {
             stayDarkCnt++;
             if(stayDarkCnt >= STAY_DARK_CNT){
                 realDark = true;
-                if(!tempCheckPumpOn){
-                    allowGather = false;
-                }
             }
             yield();
         } else {
@@ -278,17 +287,11 @@ void loopHandler() {
         }
         yield();
 
-        Homie.getLogger() << "Allow to gather = " << boolToStr(allowGather) << endl;
-
-        if(envAllowGather()) {
-            tin = sensors.getTempF(tempSensorIn) + tinSettings.offset;
-        }
+        tin = sensors.getTempF(tempSensorIn) + tinSettings.offset;
         yield();
-        if(envAllowGather()) {
-            tout = sensors.getTempF(tempSensorOut) + toutSettings.offset;
-        }
+        tout = sensors.getTempF(tempSensorOut) + toutSettings.offset;
         yield();
-        if(envAllowGather()) {
+        if(pumpOn) {
             wattsT = calcWatts(tin, tout);
         }else{
             wattsT = float(0);
@@ -296,13 +299,16 @@ void loopHandler() {
         Homie.getLogger() << "Tin = " << tin << " °F " << "Tout = " << tout << " °F " << " Watts = " << wattsT << endl;
         yield();
 
-        air = ntcAmbiant.readTempF(ADC_AMBIANT); // NOLINT(cppcoreguidelines-narrowing-conversions)
-        Homie.getLogger() << "Air = " << air << " °F" << endl;
+
+        pool = float(ntcPool.readTempF(A0));
+        yield();
+        air = float(ntcAmbiant.readTempF(ADC_AMBIANT));
+        Homie.getLogger() << "Pool = " << pool << " °F  " << "Air = " << air << " °F" << endl;
         yield();
 
-        f1 = ntcFrame1.readTempF(ADC_FRAME1); // NOLINT(cppcoreguidelines-narrowing-conversions)
+        f1 = float(ntcFrame1.readTempF(ADC_FRAME1));
         yield();
-        if(envAllowGather()) {
+        if(pumpOn) {
             wattsF1 = calcWatts(air, f1);
         }else{
             wattsF1 = float(0);
@@ -310,9 +316,9 @@ void loopHandler() {
         Homie.getLogger() << "Frame 1 = " << f1 << " °F " << " Watts = " << wattsF1 << endl;
         yield();
 
-        f2 = ntcFrame2.readTempF(ADC_FRAME2); // NOLINT(cppcoreguidelines-narrowing-conversions)
+        f2 = float(ntcFrame2.readTempF(ADC_FRAME2));
         yield();
-        if(envAllowGather()) {
+        if(pumpOn) {
             wattsF2 = calcWatts(air, f2);
         }else{
             wattsF2 = float(0);
@@ -349,21 +355,6 @@ void loopHandler() {
     }
     yield();
 
-    // Circulate On
-    if (currentMillis - previousMillisCirc > intervalCirc || previousMillisCirc == 0) {
-        Homie.getLogger() << "CIRCULATE:" << endl;
-        if(!realDark || atSetpoint) {
-            doCirculate();
-        }else{
-            Homie.getLogger() << "Not allowed!  Real dark = " << boolToStr(realDark) << " At Setpoint = " << boolToStr(atSetpoint) << endl;
-            tempCheckPumpOn = false;
-        }
-
-        Homie.getLogger() << endl;
-        previousMillisCirc = currentMillis;
-    }
-    yield();
-
     // Publish data
     if (currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
         Homie.getLogger() << "PUBLISH:" << endl;
@@ -384,6 +375,7 @@ void loopHandler() {
         tempNode.setProperty("f1").send(String(f1));
         tempNode.setProperty("f2").send(String(f2));
         tempNode.setProperty("air").send(String(air));
+        tempNode.setProperty("pool").send(String(pool));
 
         Homie.getLogger() << "Published data" << endl;
         Homie.getLogger() << endl;
@@ -401,7 +393,7 @@ void loopHandler() {
 
 void doProcess()
 {
-    if(tin >= pshConfigs.setpoint && !tempCheckPumpOn) {
+    if(tin >= pshConfigs.setpoint) {
         Homie.getLogger() << "Set point reached" << endl;
         turnPumpOff();
         atSetpoint = true;
@@ -412,38 +404,7 @@ void doProcess()
         atSetpoint = false;
     }
 
-    if(tempCheckPumpOn){
-        Homie.getLogger() << "Temp check running" << endl;
-        return;
-    }
-
     turnPumpOn();
-}
-
-void doCirculate()
-{
-    if(!tempCheckPumpOn && circLoopOffCnt < CIRC_LOOP_OFF_CNT){
-        Homie.getLogger() << "Not time yet. Off Cnt = " << circLoopOffCnt << endl;
-        circLoopOffCnt++;
-        circLoopOnCnt = 0;
-        return;
-    }
-
-    circLoopOffCnt = 0;
-    circLoopOnCnt++;
-    allowGather = true;
-
-    if(circLoopOnCnt >= CIRC_LOOP_ON_CNT){
-        Homie.getLogger() << "End of circulation. On Cnt = " << circLoopOnCnt << endl;
-        tempCheckPumpOn = false;
-        turnPumpOff();
-        circLoopOnCnt = 0;
-        return;
-    }
-
-    Homie.getLogger() << "Circulation on" << endl;
-    turnPumpOn(true);
-    tempCheckPumpOn = true;
 }
 
 #ifdef LOG_TO_TELNET
@@ -474,6 +435,9 @@ void handleTelnet(){
                 case 'X':
                     HomieInternals::HomieClass::reset();
                     break;
+                case 'o':
+                    toggleOverrideEnv();
+                    break;
                 default:
                     Serial.write(telnetBuffer);
             }
@@ -487,6 +451,7 @@ void printHelp()
     Homie.getLogger() << "h or ? - This help" << endl;
     Homie.getLogger() << "r - Reboot" << endl;
     Homie.getLogger() << "X - Reset config to default!" << endl;
+    Homie.getLogger() << "o - Toggle override environment (current: " << boolToStr(overrideEnv) << ")" << endl;
 
     delay(2000);
 }
@@ -494,6 +459,9 @@ void printHelp()
 void onHomieEvent(const HomieEvent& event)
 {
     if(event.type == HomieEventType::OTA_STARTED){
+        if (TelnetServer.hasClient()) {
+            TelnetServer.stop();
+        }
         TelnetServer.close();
     }
 }
@@ -664,26 +632,21 @@ int16_t mcpReadCallback(uint8_t channel) {
     return mcp.analogRead(channel);
 }
 
-ThermistorSettings parseNTCSettings(const char * settings, const char * name)
-{
-    ThermistorSettings fs{};
+int16_t adcReadCallback(uint8_t channel) {
+    return int16_t(adc.read(channel));
+}
 
-    sscanf(settings, "vcc=%lf;adcRef=%lf;serRes=%lf;ntcRes=%lf;tempNom=%lf;bc=%lf;samples=%i;sampleDly=%i", // NOLINT(cert-err34-c)
-      &fs.vcc, &fs.analogReference, &fs.seriesResistor, &fs.thermistorNominal, &fs.temperatureNominal, &fs.bCoef, &fs.samples, &fs.sampleDelay
-      );
+void parseNTCSettings(const char * settings, const char * name, ThermistorSettings * ts)
+{
+    sscanf(settings, "vcc=%lf;adcRef=%lf;serRes=%lf", // NOLINT(cert-err34-c)
+           &ts->vcc, &ts->analogReference, &ts->seriesResistor
+    );
 
     Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
-    Homie.getLogger() << "VCC = " << fs.vcc << endl;
-    Homie.getLogger() << "ADC Ref = " << fs.analogReference << endl;
-    Homie.getLogger() << "Ser Res = " << fs.seriesResistor << endl;
-    Homie.getLogger() << "NTC Res = " << fs.thermistorNominal << endl;
-    Homie.getLogger() << "Temp Nom = " << fs.temperatureNominal << endl;
-    Homie.getLogger() << "bCoef = " << fs.bCoef << endl;
-    Homie.getLogger() << "Samples = " << fs.samples << endl;
-    Homie.getLogger() << "Sample Delay = " << fs.sampleDelay << endl;
+    Homie.getLogger() << "VCC = " << ts->vcc << endl;
+    Homie.getLogger() << "ADC Ref = " << ts->analogReference << endl;
+    Homie.getLogger() << "Ser Res = " << ts->seriesResistor << endl;
     Homie.getLogger() << endl;
-
-    return fs;
 }
 
 PSHConfig parsePSHSettings(const char * settings, const char * name)
@@ -732,8 +695,11 @@ float calcWatts(float tempIn, float tempOut) {
     return rtn;
 }
 
-bool envAllowPump(bool overrideEnv)
+bool envAllowPump()
 {
+    if(overrideEnv){
+        return true;
+    }
 #ifndef NO_ENV_HOUR_CHECK
     if(hour() < DAY_START_HOUR || hour() >= DAY_END_HOUR) {
         Homie.getLogger() << "Env: Now hour " << hour() << " not between " << DAY_START_HOUR << " and " << DAY_END_HOUR << endl;
@@ -746,43 +712,26 @@ bool envAllowPump(bool overrideEnv)
         return false;
     }
 
-    if(!overrideEnv) {
-        if (wattsT <= pshConfigs.minWatts) {
-            Homie.getLogger() << "Env: Not enough watts from tin/tout" << endl;
-            return false;
-        }
-    }
-
 #ifndef NO_ENV_SP_CHECK
-    if(!overrideEnv) {
-        if (air < pshConfigs.setpoint) {
-            if (((int(f1) + int(f2)) / 2) < (int(air) + pshConfigs.airDiff)) {
-                Homie.getLogger() << "Env: Frame to air not enough diff" << endl;
-                return false;
-            }
+    if (air < pshConfigs.setpoint) {
+        if (((int(f1) + int(f2)) / 2) < (int(air) + pshConfigs.airDiff)) {
+            Homie.getLogger() << "Env: Frame to air not enough diff" << endl;
+            return false;
         }
     }
 #endif
 
-    return true;
-}
-
-bool envAllowGather()
-{
-    if(allowGather){
-        return true;
-    }
-
-    if(realDark){
+    if( ((int(f1) + int(f2)) / 2) <= int(pool)) {
+        Homie.getLogger() << "Env: Frame less than pool temp" << endl;
         return false;
     }
 
     return true;
 }
 
-bool turnPumpOn(bool overrideEnv)
+bool turnPumpOn()
 {
-    if(!envAllowPump(overrideEnv)){
+    if(!envAllowPump()){
         Homie.getLogger() << "Env not allow pump on" << endl;
         turnPumpOff();
         return false;
@@ -793,7 +742,6 @@ bool turnPumpOn(bool overrideEnv)
     }
     digitalWrite(RLY_PIN, HIGH);
     pumpOn = true;
-    allowGather = true;
     return true;
 }
 
@@ -806,6 +754,11 @@ bool turnPumpOff()
     pumpOn = false;
 
     return true;
+}
+
+void toggleOverrideEnv()
+{
+    overrideEnv = !overrideEnv;
 }
 
 
