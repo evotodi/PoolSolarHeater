@@ -17,11 +17,8 @@
       "enabled": true
     },
     "settings": {
-      "config": "dark=1800;gpm=1.6;setpoint=95.0;minWatts=200.0;airDiff=10",
-      "frame1": "vcc=5.0;adcRef=5.0;serRes=9700",
-      "frame2": "vcc=5.0;adcRef=5.0;serRes=10000",
+      "config": "dark=1800;setpoint=95.0;airDiff=10",
       "ambiant": "vcc=5.0;adcRef=5.0;serRes=120000",
-      "pool": "vcc=3.3;adcRef=3.3;serRes=115000",
       "tin": "addr=289D6F49F67A3CF8;offset=0.8",
       "tout": "addr=283E4749F6C13C1A;offset=0.0"
     }
