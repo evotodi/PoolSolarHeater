@@ -21,7 +21,7 @@ MCP3204 mcp(MCP_DIN, MCP_DOUT, MCP_CLK);
 char timestampStrBuf[1024];
 EasyStringStream timestampStream(timestampStrBuf, 1024);
 
-PSHConfig pshConfigs = {int16_t(DARK_DEFAULT), float(SP_DEFAULT)};
+PSHConfig pshConfigs = {int16_t(CLOUDY_DEFAULT), float(SP_DEFAULT), float(SP_HYSTERESIS_DEFAULT), float(AIR_DIFF_DEFAULT), float(ELV_AM_DEFAULT), float(ELV_PM_DEFAULT)};
 DTSetting tinSettings = {"0000000000000000", float(TOFS_DEFAULT)};
 DTSetting toutSettings = {"0000000000000000", float(TOFS_DEFAULT)};
 
@@ -42,19 +42,25 @@ unsigned long intervalProc = LOOP_PROC_DLY;
 unsigned long previousMillisProc = 0;
 unsigned long intervalPub = LOOP_PUB_DLY;
 unsigned long previousMillisPub = 0;
-unsigned long intervalHB = 1 * 1E3;
+unsigned long intervalHB = LOOP_HB_DLY;
 unsigned long previousMillisHB = 0;
+unsigned long intervalDayLight = LOOP_DAYLIGHT_DLY;
+unsigned long previousMillisDaylight = 0;
 
-bool isDark = false;
-bool realDark = false;
+bool isCloudy = false;
+bool isOvercast = false;
 bool atSetpoint = false;
 bool overrideEnv = false;
+bool isHeating = false;
+
 int telnetBuffer;
 int16_t light = 0;
-char stayDarkCnt = 0;
+char cloudyCnt = 0;
 float tin = -127.0;
 float tout = -127.0;
 float air = -127.0;
+auto solar = Solar{};
+auto daylight = Daylight{};
 
 void setup()
 {
@@ -113,13 +119,13 @@ void setupHandler()
     setSyncInterval(600);
     yield();
 
-    pshConfigs = parsePSHSettings(configSetting.get(), "Config");
+    parsePSHSettings(&pshConfigs, configSetting.get(), "Config");
 
     parseNTCSettings(ambiantSetting.get(), "Ambiant", &ambiantSettings);
 
-    tinSettings = parseDTSettings(tinSetting.get(), "Tin");
+    parseDTSettings(&tinSettings, tinSetting.get(), "Tin");
     strToAddress(tinSettings.addr, tempSensorIn);
-    toutSettings = parseDTSettings(toutSetting.get(), "Tout");
+    parseDTSettings(&toutSettings, toutSetting.get(), "Tout");
     strToAddress(toutSettings.addr, tempSensorOut);
     yield();
 
@@ -154,23 +160,23 @@ void loopHandler()
         sensors.requestTemperatures();
         delay(100);
 
-        if (isDark) {
+        if (isCloudy) {
             intervalProc = LOOP_SLEEP_DLY;
             intervalPub = LOOP_SLEEP_DLY;
             previousMillisProc = 0;
-            stayDarkCnt++;
-            if(stayDarkCnt >= STAY_DARK_CNT){
-                realDark = true;
+            cloudyCnt++;
+            if(cloudyCnt >= OVERCAST_CNT){
+                isOvercast = true;
             }
             yield();
         } else {
             intervalProc = LOOP_PROC_DLY;
             intervalPub = LOOP_PUB_DLY;
-            realDark = false;
-            stayDarkCnt = 0;
+            isOvercast = false;
+            cloudyCnt = 0;
         }
-        if(realDark){
-            stayDarkCnt = STAY_DARK_CNT;
+        if(isOvercast){
+            cloudyCnt = OVERCAST_CNT;
         }
         yield();
 
@@ -187,15 +193,19 @@ void loopHandler()
         yield();
 
         light = mcp.analogRead(ADC_LIGHT);
-        if (light <= pshConfigs.dark) {
-            isDark = true;
+        if (light <= pshConfigs.cloudy) {
+            isCloudy = true;
         } else {
-            isDark = false;
+            isCloudy = false;
         }
-        Homie.getLogger() << "Light level = " << light << " Dark out = " << boolToStr(isDark) << " Real Dark = " << boolToStr(realDark) << endl;
+        Homie.getLogger() << "Light level = " << light << " Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << endl;
         yield();
 
-        Homie.getLogger() << "At setpoint = " << boolToStr(atSetpoint) << endl;
+        getSolar(&solar);
+        Homie.getLogger() << "Solar Azimuth = " << solar.azimuth << "° Elevation = " << solar.elevation << "°" << endl;
+        yield();
+
+        Homie.getLogger() << "At setpoint = " << boolToStr(atSetpoint) << "  Heating = " << boolToStr(isHeating) << endl;
         yield();
 
         Homie.getLogger() << endl;
@@ -207,10 +217,17 @@ void loopHandler()
     if (currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) {
         Homie.getLogger() << "PROCESS:" << endl;
 
-//        doProcess();
+        doProcess();
 
         Homie.getLogger() << endl;
         previousMillisProc = currentMillis;
+    }
+    yield();
+
+    // Update Daylight
+    if (currentMillis - previousMillisDaylight > intervalDayLight || previousMillisDaylight == 0) {
+        getDaylight(&daylight);
+        previousMillisDaylight = currentMillis;
     }
     yield();
 
@@ -285,7 +302,31 @@ time_t getNtpTime()
 {
     timeClient.forceUpdate();
     Homie.getLogger() << "NTP Updated. Current time is [ Unix: " << timeClient.getEpochTime() << " Human: " << timeClient.getFormattedTime() << " ]" << endl;
+#ifdef DEBUG_FORCE_TIME
+    return time_t (DEBUG_FORCE_TIME);
+#endif
     return time_t(timeClient.getEpochTime());
+}
+
+int getTimeOffset(time_t t)
+{
+    if(month(t) == DST_BEGIN_MONTH && day(t) >= DST_BEGIN_DAY){
+        return TIME_OFFSET_DST;
+    }
+
+    if(month(t) == DST_END_MONTH && day(t) <= DST_END_DAY){
+        return TIME_OFFSET_ST;
+    }
+
+    if(month(t) > DST_BEGIN_MONTH && month(t) < DST_END_MONTH){
+        return TIME_OFFSET_DST;
+    }
+
+    if(month(t) > DST_END_MONTH){
+        return TIME_OFFSET_ST;
+    }
+
+    return TIME_OFFSET_DST;
 }
 
 const char *getTimestamp() 
@@ -449,37 +490,32 @@ void parseNTCSettings(const char * settings, const char * name, ThermistorSettin
     Homie.getLogger() << endl;
 }
 
-PSHConfig parsePSHSettings(const char * settings, const char * name)
+void parsePSHSettings(PSHConfig * pPSHConfig, const char * settings, const char * name)
 {
-    PSHConfig fs{};
-
-    sscanf(settings, "dark=%hi;setpoint=%f;airDiff=%i", // NOLINT(cert-err34-c)
-           &fs.dark, &fs.setpoint, &fs.airDiff
+    sscanf(settings, "cloudy=%hi;setpoint=%f;swing=%f;airDiff=%f;sunMinElvAM=%f;sunMinElvPM=%f", // NOLINT(cert-err34-c)
+           &pPSHConfig->cloudy, &pPSHConfig->setpoint, &pPSHConfig->swing, &pPSHConfig->airDiff, &pPSHConfig->elevationMinAM, &pPSHConfig->elevationMinPM
     );
 
     Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
-    Homie.getLogger() << "Dark = " << fs.dark << endl;
-    Homie.getLogger() << "Setpoint = " << fs.setpoint << endl;
-    Homie.getLogger() << "Min Air->Frame Diff = " << fs.airDiff << endl;
+    Homie.getLogger() << "Cloudy = " << pPSHConfig->cloudy << endl;
+    Homie.getLogger() << "Setpoint = " << pPSHConfig->setpoint << endl;
+    Homie.getLogger() << "Swing = " << pPSHConfig->swing << endl;
+    Homie.getLogger() << "Min Air->Water Diff = " << pPSHConfig->airDiff << endl;
+    Homie.getLogger() << "Min Sun Elevation AM = " << pPSHConfig->elevationMinAM << endl;
+    Homie.getLogger() << "Min Sun Elevation PM = " << pPSHConfig->elevationMinPM << endl;
     Homie.getLogger() << endl;
-
-    return fs;
 }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat"
-DTSetting parseDTSettings(const char * settings, const char * name)
+void parseDTSettings(DTSetting * pDTSetting, const char * settings, const char * name)
 {
-    DTSetting fs{};
-
-    sscanf(settings, "addr=%[0-9a-fA-F];offset=%f", &fs.addr, &fs.offset ); // NOLINT(cert-err34-c)
+    sscanf(settings, "addr=%[0-9a-fA-F];offset=%f", &pDTSetting->addr, &pDTSetting->offset ); // NOLINT(cert-err34-c)
 
     Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
-    Homie.getLogger() << "Address = " << fs.addr << endl;
-    Homie.getLogger() << "Offset = " << fs.offset << endl;
+    Homie.getLogger() << "Address = " << pDTSetting->addr << endl;
+    Homie.getLogger() << "Offset = " << pDTSetting->offset << endl;
     Homie.getLogger() << endl;
-
-    return fs;
 }
 #pragma clang diagnostic pop
 
@@ -488,24 +524,144 @@ void toggleOverrideEnv()
     overrideEnv = !overrideEnv;
 }
 
-Solar getSolar()
+void getSolar(Solar * pSolar)
 {
     time_t utc = now();
-    Solar solar{};
-
     // Calculate the solar position, in degrees
-    calcHorizontalCoordinates(utc, LATITUDE, LONGITUDE, solar.azimuth, solar.elevation);
+    calcHorizontalCoordinates(utc, LATITUDE, LONGITUDE, pSolar->azimuth, pSolar->elevation);
 
     // // Print results
-#ifdef DEBUG  
-    Serial.print("Solar Time: ");
-    Serial.println(utc);
-    Serial.print(F("Solar Az: "));
-    Serial.print(solar.azimuth);
-    Serial.print(F("°  El: "));
-    Serial.print(solar.elevation);
-    Serial.println(F("°"));
+//#ifdef DEBUG
+//    Serial.print("Solar Time: ");
+//    Serial.println(utc);
+//    Serial.print(F("Solar Az: "));
+//    Serial.print(_solar->azimuth);
+//    Serial.print(F("°  El: "));
+//    Serial.print(_solar->elevation);
+//    Serial.println(F("°"));
+//#endif
+}
+
+void getDaylight(Daylight * pDaylight)
+{
+    double md;
+    time_t utc = now();
+    calcCivilDawnDusk(utc, LATITUDE, LONGITUDE, pDaylight->transit, pDaylight->sunrise, pDaylight->sunset);
+    md = ((pDaylight->sunset - pDaylight->sunrise) / 2) + pDaylight->sunrise;
+
+    tmElements_t tm;
+    tm.Year = year(utc) - 1970;
+    tm.Month = month(utc);
+    tm.Day = day(utc);
+    tm.Hour = 0;
+    tm.Minute = 0;
+    tm.Second = 0;
+    time_t t = makeTime(tm);
+    pDaylight->midday = t + long(round(60 * 60 * md));
+
+//#ifdef DEBUG
+//    Serial.print("Daylight Time: ");
+//    Serial.println(utc);
+//    Serial.print(F("Sun Rise: "));
+//    Serial.print(pDaylight->sunrise);
+//    Serial.print(F("  Sun Set: "));
+//    Serial.print(pDaylight->sunset);
+//    Serial.print(F("  Transit: "));
+//    Serial.println(pDaylight->transit);
+//    Serial.print(F("Mid: "));
+//    Serial.println(pDaylight->midday);
+//#endif
+}
+
+void doProcess()
+{
+    if(tin >= pshConfigs.setpoint) {
+        Homie.getLogger() << "Set point reached" << endl;
+        turnHeatOff();
+        atSetpoint = true;
+        return;
+    }
+
+    if(tin < (pshConfigs.setpoint - pshConfigs.swing)){
+        atSetpoint = false;
+    }
+
+    turnHeatOn();
+}
+
+bool turnHeatOn()
+{
+    if(!envAllowHeat()){
+        Homie.getLogger() << "Env not allow heat on" << endl;
+        turnHeatOff();
+        return false;
+    }
+
+    if(!isHeating){
+        Homie.getLogger() << "Heat turned on" << endl;
+    }
+    digitalWrite(RLY_PIN, HIGH);
+    isHeating = true;
+    return true;
+}
+
+bool turnHeatOff()
+{
+    if(isHeating){
+        Homie.getLogger() << "Heat turned off" << endl;
+    }
+    digitalWrite(RLY_PIN, LOW);
+    isHeating = false;
+
+    return true;
+}
+
+bool envAllowHeat()
+{
+    bool rtn = true;
+
+    if(overrideEnv){
+        return true;
+    }
+
+#ifndef NO_ENV_SOLAR_CHECK
+    time_t t = now();
+    if(t < daylight.midday && solar.elevation <= pshConfigs.elevationMinAM) {
+        Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below morning minimum " << pshConfigs.elevationMinAM << "°" << endl;
+        rtn = false;
+    }
+    if(t >= daylight.midday && solar.elevation <= pshConfigs.elevationMinPM) {
+        Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below evening minimum " << pshConfigs.elevationMinPM << "°" << endl;
+        rtn = false;
+    }
+#else
+    Homie.getLogger() << "Env: Skip solar check" << endl;
 #endif
 
-    return solar;
+#ifndef NO_ENV_CLOUD_CHECK
+    if(isOvercast && air < pshConfigs.setpoint){
+        Homie.getLogger() << "Env: Overcast and too cool outside" << endl;
+        rtn = false;
+    }
+#else
+    Homie.getLogger() << "Env: Skip cloud check" << endl;
+#endif
+
+#ifndef NO_ENV_SP_CHECK
+    if (air < pshConfigs.setpoint) {
+        if ((int(tin)) < (int(air) + pshConfigs.airDiff)) {
+            Homie.getLogger() << "Env: Temp in to air not enough diff" << endl;
+            rtn = false;
+        }
+    }
+#else
+    Homie.getLogger() << "Env: Skip set-point check" << endl;
+#endif
+
+    if(int(tout) < int(tin)) {
+        Homie.getLogger() << "Env: Temp out less than temp in" << endl;
+        rtn = false;
+    }
+
+    return rtn;
 }

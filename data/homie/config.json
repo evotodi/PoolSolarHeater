@@ -17,7 +17,7 @@
       "enabled": true
     },
     "settings": {
-      "config": "dark=1800;setpoint=95.0;airDiff=10",
+      "config": "cloudy=1800;setpoint=95.0;swing=2.0;airDiff=10.0;sunMinElvAM=40.0;sunMinElvPM=30.0",
       "ambiant": "vcc=5.0;adcRef=5.0;serRes=120000",
       "tin": "addr=289D6F49F67A3CF8;offset=0.8",
       "tout": "addr=283E4749F6C13C1A;offset=0.0"
