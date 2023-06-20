@@ -22,18 +22,28 @@ char timestampStrBuf[1024];
 EasyStringStream timestampStream(timestampStrBuf, 1024);
 
 PSHConfig pshConfigs = {int16_t(CLOUDY_DEFAULT), float(SP_DEFAULT), float(SP_HYSTERESIS_DEFAULT), float(AIR_DIFF_DEFAULT), float(ELV_AM_DEFAULT), float(ELV_PM_DEFAULT)};
-DTSetting tinSettings = {"0000000000000000", float(TOFS_DEFAULT)};
-DTSetting toutSettings = {"0000000000000000", float(TOFS_DEFAULT)};
+DTSetting tinSettings = {"0000000000000000", float(0)};
+DTSetting toutSettings = {"0000000000000000", float(0)};
 
 ThermistorSettings ambiantSettings = {5.0, 5.0, 100000, 100000, 25, 4096, 3950, 5, 20};
 Thermistor ntcAmbiant(mcpReadCallback, ambiantSettings);
 
+#ifndef USE_TIN_AS_POOL
+ThermistorSettings poolSettings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
+Thermistor ntcPool(mcpReadCallback, poolSettings); // Labeled F1 in box
+#endif
+
 Oversampling adc(10, 12, 2);
+
+EasyButton calBtn(CAL_PIN);
 
 HomieSetting<const char *> configSetting("config", "config kv");
 HomieSetting<const char *> ambiantSetting("ambiant", "ambiant kv");
 HomieSetting<const char *> tinSetting("tin", "tin json");
 HomieSetting<const char *> toutSetting("tout", "tout json");
+#ifndef USE_TIN_AS_POOL
+HomieSetting<const char *> poolSetting("pool", "pool kv");
+#endif
 
 unsigned long currentMillis = 0;
 unsigned long intervalData = LOOP_DAT_DLY;
@@ -54,11 +64,12 @@ bool overrideEnv = false;
 bool isHeating = false;
 
 int telnetBuffer;
-int16_t light = 0;
+Smoothed<int16_t> light;
 char cloudyCnt = 0;
-float tin = -127.0;
-float tout = -127.0;
-float air = -127.0;
+Smoothed<float> tin;
+Smoothed<float> tout;
+Smoothed<float> air;
+Smoothed<float> pool;
 auto solar = Solar{};
 auto daylight = Daylight{};
 
@@ -69,6 +80,11 @@ void setup()
 #else
     Homie.disableLogging();
 #endif
+    light.begin(SMOOTHED_AVERAGE, 3);
+    tin.begin(SMOOTHED_AVERAGE, 5);
+    tout.begin(SMOOTHED_AVERAGE, 5);
+    pool.begin(SMOOTHED_AVERAGE, 5);
+    air.begin(SMOOTHED_AVERAGE, 3);
 
     WiFi.mode(WIFI_STA);
 
@@ -91,6 +107,10 @@ void setup()
     Homie.setLoggingPrinter(&Telnet);
     Homie.onEvent(onHomieEvent);
 #endif
+
+    EEPROM.begin(EEPROM_BYTES_REQUIRED);
+    readEEProm();
+
 
     Homie.setup();
 }
@@ -121,14 +141,13 @@ void setupHandler()
 
     parsePSHSettings(&pshConfigs, configSetting.get(), "Config");
 
-    parseNTCSettings(ambiantSetting.get(), "Ambiant", &ambiantSettings);
-
     parseDTSettings(&tinSettings, tinSetting.get(), "Tin");
     strToAddress(tinSettings.addr, tempSensorIn);
     parseDTSettings(&toutSettings, toutSetting.get(), "Tout");
     strToAddress(toutSettings.addr, tempSensorOut);
     yield();
 
+    parseNTCSettings(ambiantSetting.get(), "Ambiant", &ambiantSettings);
     ntcAmbiant.setSeriesResistor(&ambiantSettings.seriesResistor);
     ntcAmbiant.setThermistorNominal(&ambiantSettings.thermistorNominal);
     ntcAmbiant.setBCoef(&ambiantSettings.bCoef);
@@ -138,7 +157,24 @@ void setupHandler()
     Homie.getLogger() << "Ambiant settings = " << ntcAmbiant.dumpSettings() << endl;
     yield();
 
+#ifndef USE_TIN_AS_POOL
+    parseNTCSettings(poolSetting.get(), "Pool", &poolSettings);
+    ntcPool.setSeriesResistor(&poolSettings.seriesResistor);
+    ntcPool.setThermistorNominal(&poolSettings.thermistorNominal);
+    ntcPool.setBCoef(&poolSettings.bCoef);
+    ntcPool.setTemperatureNominal(&poolSettings.temperatureNominal);
+    ntcPool.setVcc(&poolSettings.vcc);
+    ntcPool.setAnalogReference(&poolSettings.analogReference);
+    Homie.getLogger() << "Pool settings = " << ntcPool.dumpSettings() << endl;
+    yield();
+#endif
+
     setupOwSensors();
+
+    calBtn.begin();
+    calBtn.onPressed(calibratePoolTemps);
+    calBtn.onSequence(2, 1500, calibrationReset);
+    calBtn.enableInterrupt(calBtnISR);
 }
 
 void loopHandler() 
@@ -180,25 +216,34 @@ void loopHandler()
         }
         yield();
 
-        tin = sensors.getTempF(tempSensorIn) + tinSettings.offset;
+        tin.add(sensors.getTempF(tempSensorIn) + tinSettings.offset);
         yield();
-        tout = sensors.getTempF(tempSensorOut) + toutSettings.offset;
-        yield();
-
-        Homie.getLogger() << "Tin = " << tin << " °F " << "Tout = " << tout << " °F " << endl;
+        tout.add(sensors.getTempF(tempSensorOut) + toutSettings.offset);
         yield();
 
-        air = float(ntcAmbiant.readTempF(ADC_AMBIANT));
-        Homie.getLogger() << "Air = " << air << " °F" << endl;
+        Homie.getLogger() << "Tin = " << tin.getLast() << " °F  Tin Smooth = " << tin.get() << " °F " << endl;
+        Homie.getLogger() << "Tout = " << tout.getLast() << " °F  Tout Smooth = " << tout.get() << " °F " << endl;
         yield();
 
-        light = mcp.analogRead(ADC_LIGHT);
-        if (light <= pshConfigs.cloudy) {
+        air.add(float(ntcAmbiant.readTempF(ADC_AMBIANT)));
+        Homie.getLogger() << "Air = " << air.getLast() << " °F  Air Smooth = " << air.get() << " °F" << endl;
+        yield();
+
+#ifdef USE_TIN_AS_POOL
+        pool.add(tin.getLast());
+#else
+        pool.add(float(ntcPool.readTempF(ADC_POOL)));
+#endif
+        Homie.getLogger() << "Pool = " << pool.getLast() << " °F  Pool Smooth = " << pool.get() << " °F" << endl;
+        yield();
+
+        light.add(mcp.analogRead(ADC_LIGHT));
+        if (light.get() <= pshConfigs.cloudy) {
             isCloudy = true;
         } else {
             isCloudy = false;
         }
-        Homie.getLogger() << "Light level = " << light << " Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << endl;
+        Homie.getLogger() << "Light level = " << light.getLast() << " Light smoothed = " << light.get() << " Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << endl;
         yield();
 
         getSolar(&solar);
@@ -298,14 +343,52 @@ void onHomieEvent(const HomieEvent& event)
 }
 #endif
 
+void readEEProm()
+{
+    int eeAddress = 0;
+    int eeInited = 0;
+    EEPROM.get(eeAddress, eeInited);
+    if(eeInited == EEPROM_INIT_ID) {
+        Homie.getLogger() << "EEPROM is initialized" << endl;
+        eeAddress = int(eeAddress + sizeof(int));
+        EEPROM.get(eeAddress,tinSettings.offset);
+        Homie.getLogger() << "Offset Tin = " << tinSettings.offset << " °F" << endl;
+        eeAddress = int(eeAddress + sizeof(float));
+        EEPROM.get(eeAddress, toutSettings.offset);
+        Homie.getLogger() << "Offset Tout = " << toutSettings.offset << " °F" << endl;
+    }else{
+        initEEProm();
+    }
+}
+
+void initEEProm()
+{
+    Homie.getLogger() << "Initializing EEPROM" << endl;
+    EEPROM.put(0, EEPROM_INIT_ID);
+    EEPROM.commit();
+    writeEEProm();
+}
+
+void writeEEProm()
+{
+    Homie.getLogger() << "Writing EEPROM" << endl;
+    int eeAddress = sizeof(int);
+    EEPROM.put(eeAddress, tinSettings.offset);
+    eeAddress = int(eeAddress + sizeof(float));
+    EEPROM.put(eeAddress, toutSettings.offset);
+    EEPROM.commit();
+}
+
 time_t getNtpTime() 
 {
     timeClient.forceUpdate();
     Homie.getLogger() << "NTP Updated. Current time is [ Unix: " << timeClient.getEpochTime() << " Human: " << timeClient.getFormattedTime() << " ]" << endl;
 #ifdef DEBUG_FORCE_TIME
     return time_t (DEBUG_FORCE_TIME);
-#endif
+#else
     return time_t(timeClient.getEpochTime());
+#endif
+
 }
 
 int getTimeOffset(time_t t)
@@ -510,7 +593,7 @@ void parsePSHSettings(PSHConfig * pPSHConfig, const char * settings, const char 
 #pragma clang diagnostic ignored "-Wformat"
 void parseDTSettings(DTSetting * pDTSetting, const char * settings, const char * name)
 {
-    sscanf(settings, "addr=%[0-9a-fA-F];offset=%f", &pDTSetting->addr, &pDTSetting->offset ); // NOLINT(cert-err34-c)
+    sscanf(settings, "addr=%[0-9a-fA-F]", &pDTSetting->addr); // NOLINT(cert-err34-c)
 
     Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
     Homie.getLogger() << "Address = " << pDTSetting->addr << endl;
@@ -575,14 +658,14 @@ void getDaylight(Daylight * pDaylight)
 
 void doProcess()
 {
-    if(tin >= pshConfigs.setpoint) {
+    if(pool.get() >= pshConfigs.setpoint) {
         Homie.getLogger() << "Set point reached" << endl;
         turnHeatOff();
         atSetpoint = true;
         return;
     }
 
-    if(tin < (pshConfigs.setpoint - pshConfigs.swing)){
+    if(pool.get() < (pshConfigs.setpoint - pshConfigs.swing)){
         atSetpoint = false;
     }
 
@@ -639,7 +722,7 @@ bool envAllowHeat()
 #endif
 
 #ifndef NO_ENV_CLOUD_CHECK
-    if(isOvercast && air < pshConfigs.setpoint){
+    if(isOvercast && air.get() < pshConfigs.setpoint){
         Homie.getLogger() << "Env: Overcast and too cool outside" << endl;
         rtn = false;
     }
@@ -658,10 +741,60 @@ bool envAllowHeat()
     Homie.getLogger() << "Env: Skip set-point check" << endl;
 #endif
 
-    if(int(tout) < int(tin)) {
+    if(int(tout.get()) < int(tin.get())) {
         Homie.getLogger() << "Env: Temp out less than temp in" << endl;
         rtn = false;
     }
 
     return rtn;
+}
+
+void calBtnISR()
+{
+    calBtn.read();
+}
+
+void calibratePoolTemps()
+{
+    Homie.getLogger() << "Calibration Started!" << endl;
+    for (int i = 0; i < 10; i++) {
+        sensors.requestTemperatures();
+        delay(100);
+
+        tin.add(sensors.getTempF(tempSensorIn) + tinSettings.offset);
+        tout.add(sensors.getTempF(tempSensorOut) + toutSettings.offset);
+
+        Homie.getLogger() << "Tin = " << tin.getLast() << " °F  Tin Smooth = " << tin.get() << " °F " << endl;
+        Homie.getLogger() << "Tout = " << tout.getLast() << " °F  Tout Smooth = " << tout.get() << " °F " << endl;
+
+#ifdef USE_TIN_AS_POOL
+        pool.add(tin.getLast());
+#else
+        pool.add(float(ntcPool.readTempF(ADC_POOL)));
+        Homie.getLogger() << "Pool = " << pool.getLast() << " °F  Pool Smooth = " << pool.get() << " °F" << endl;
+#endif
+        yield();
+    }
+
+#ifdef USE_TIN_AS_POOL
+    toutSettings.offset = tin.get() - tout.get();
+#else
+    tinSettings.offset = pool.get() - tin.get();
+    toutSettings.offset = pool.get() - tout.get();
+#endif
+
+    writeEEProm();
+
+    Homie.getLogger() << "Offsets: tin = " << tinSettings.offset << " °F  tout = " << toutSettings.offset << " °F" << endl;
+
+    Homie.getLogger() << "Calibration Completed!" << endl;
+
+}
+
+void calibrationReset()
+{
+    Homie.getLogger() << "Calibration Reset!" << endl;
+    tinSettings.offset = float(0);
+    toutSettings.offset = float(0);
+    writeEEProm();
 }
