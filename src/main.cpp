@@ -108,10 +108,6 @@ void setup()
     Homie.onEvent(onHomieEvent);
 #endif
 
-    EEPROM.begin(EEPROM_BYTES_REQUIRED);
-    readEEProm();
-
-
     Homie.setup();
 }
 
@@ -130,6 +126,8 @@ void setupHandler()
     TelnetServer.begin();
     Serial.print("Starting telnet server on port "); Serial.println(TELNET_PORT);
 #endif
+    pinMode(LED_BUILTIN_AUX, OUTPUT);
+
     timeClient.begin();
     yield();
     timeClient.forceUpdate();
@@ -171,10 +169,14 @@ void setupHandler()
 
     setupOwSensors();
 
+    readConfig();
+
     calBtn.begin();
-    calBtn.onPressed(calibratePoolTemps);
+    calBtn.onPressedFor(2000, calibratePoolTemps);
     calBtn.onSequence(2, 1500, calibrationReset);
     calBtn.enableInterrupt(calBtnISR);
+
+    digitalWrite(LED_BUILTIN_AUX, HIGH);
 }
 
 void loopHandler() 
@@ -217,6 +219,7 @@ void loopHandler()
         yield();
 
         tin.add(sensors.getTempF(tempSensorIn) + tinSettings.offset);
+
         yield();
         tout.add(sensors.getTempF(tempSensorOut) + toutSettings.offset);
         yield();
@@ -257,6 +260,7 @@ void loopHandler()
         previousMillisData = currentMillis;
     }
     yield();
+    calBtn.update();
 
     // Process data
     if (currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) {
@@ -268,6 +272,7 @@ void loopHandler()
         previousMillisProc = currentMillis;
     }
     yield();
+    calBtn.update();
 
     // Update Daylight
     if (currentMillis - previousMillisDaylight > intervalDayLight || previousMillisDaylight == 0) {
@@ -278,9 +283,20 @@ void loopHandler()
 
     // Blink the heartbeat led
     if (currentMillis - previousMillisHB > intervalHB || previousMillisHB == 0) {
-        digitalWrite(LED_BUILTIN_AUX, !digitalRead(LED_BUILTIN_AUX));
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(75);
+        yield();
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(200);
+        yield();
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(75);
+        yield();
+        digitalWrite(LED_BUILTIN, HIGH);
         previousMillisHB = currentMillis;
     }
+
+    calBtn.update();
 }
 
 #ifdef LOG_TO_TELNET
@@ -343,41 +359,85 @@ void onHomieEvent(const HomieEvent& event)
 }
 #endif
 
-void readEEProm()
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+void readConfig()
 {
-    int eeAddress = 0;
-    int eeInited = 0;
-    EEPROM.get(eeAddress, eeInited);
-    if(eeInited == EEPROM_INIT_ID) {
-        Homie.getLogger() << "EEPROM is initialized" << endl;
-        eeAddress = int(eeAddress + sizeof(int));
-        EEPROM.get(eeAddress,tinSettings.offset);
-        Homie.getLogger() << "Offset Tin = " << tinSettings.offset << " °F" << endl;
-        eeAddress = int(eeAddress + sizeof(float));
-        EEPROM.get(eeAddress, toutSettings.offset);
-        Homie.getLogger() << "Offset Tout = " << toutSettings.offset << " °F" << endl;
-    }else{
-        initEEProm();
+    if(!SPIFFS.begin()){
+        Homie.getLogger() << F("✖ Failed to initialize SPIFFS for pool config read") << endl;
+        return;
     }
-}
 
-void initEEProm()
-{
-    Homie.getLogger() << "Initializing EEPROM" << endl;
-    EEPROM.put(0, EEPROM_INIT_ID);
-    EEPROM.commit();
-    writeEEProm();
-}
+    if (!SPIFFS.exists(CONFIG_PATH)) {
+        Homie.getLogger() << F("✖ ") << CONFIG_PATH << F(" doesn't exist") << endl;
+        return;
+    }
 
-void writeEEProm()
-{
-    Homie.getLogger() << "Writing EEPROM" << endl;
-    int eeAddress = sizeof(int);
-    EEPROM.put(eeAddress, tinSettings.offset);
-    eeAddress = int(eeAddress + sizeof(float));
-    EEPROM.put(eeAddress, toutSettings.offset);
-    EEPROM.commit();
+    File configFile = SPIFFS.open(CONFIG_PATH, "r");
+
+    if (!configFile) {
+        Homie.getLogger() << F("✖ Cannot open pool config file") << endl;
+        return;
+    }
+
+    size_t configSize = configFile.size();
+
+    if (configSize >= HomieInternals::MAX_JSON_CONFIG_FILE_SIZE) {
+        Homie.getLogger() << F("✖ Pool config file too big") << endl;
+        return;
+    }
+
+    char buf[HomieInternals::MAX_JSON_CONFIG_FILE_SIZE];
+    configFile.readBytes(buf, configSize);
+    configFile.close();
+    buf[configSize] = '\0';
+
+    StaticJsonDocument<HomieInternals::MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE> jsonDoc;
+    if (deserializeJson(jsonDoc, buf) != DeserializationError::Ok || !jsonDoc.is<JsonObject>()) {
+        Homie.getLogger() << F("✖ Invalid JSON in the pool config file") << endl;
+        return;
+    }
+
+    JsonObject parsedJson = jsonDoc.as<JsonObject>();
+
+    tinSettings.offset = parsedJson["tinOffset"].as<float>();
+    toutSettings.offset = parsedJson["toutOffset"].as<float>();
+
+    Homie.getLogger() << endl << F("{} Stored Pool configuration") << endl;
+    Homie.getLogger() << F("  • TIN Offset: ") << tinSettings.offset << endl;
+    Homie.getLogger() << F("  • TOUT Offset: ") << toutSettings.offset << endl;
+    Homie.getLogger() << endl;
+
 }
+#pragma clang diagnostic pop
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+void writeConfig()
+{
+    if(!SPIFFS.begin()){
+        Homie.getLogger() << F("✖ Failed to initialize SPIFFS for pool config write") << endl;
+        return;
+    }
+
+    SPIFFS.remove(CONFIG_PATH);
+
+    File configFile = SPIFFS.open(CONFIG_PATH, "w");
+    if (!configFile) {
+        Homie.getLogger() << F("✖ Cannot open pool config file") << endl;
+        return;
+    }
+
+    StaticJsonDocument<HomieInternals::MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE> jsonDoc;
+    jsonDoc["tinOffset"] = tinSettings.offset;
+    jsonDoc["toutOffset"] = toutSettings.offset;
+
+    serializeJson(jsonDoc, configFile);
+    configFile.close();
+
+    Homie.getLogger() << F("✔ Pool config file written") << endl << endl;
+}
+#pragma clang diagnostic pop
 
 time_t getNtpTime() 
 {
@@ -757,7 +817,11 @@ void calBtnISR()
 void calibratePoolTemps()
 {
     Homie.getLogger() << "Calibration Started!" << endl;
+    digitalWrite(LED_BUILTIN_AUX, LOW);
+    delay(2000);
+
     for (int i = 0; i < 10; i++) {
+        digitalWrite(LED_BUILTIN_AUX, !digitalRead(LED_BUILTIN_AUX));
         sensors.requestTemperatures();
         delay(100);
 
@@ -776,6 +840,8 @@ void calibratePoolTemps()
         yield();
     }
 
+    digitalWrite(LED_BUILTIN_AUX, LOW);
+
 #ifdef USE_TIN_AS_POOL
     toutSettings.offset = tin.get() - tout.get();
 #else
@@ -783,18 +849,22 @@ void calibratePoolTemps()
     toutSettings.offset = pool.get() - tout.get();
 #endif
 
-    writeEEProm();
-
     Homie.getLogger() << "Offsets: tin = " << tinSettings.offset << " °F  tout = " << toutSettings.offset << " °F" << endl;
 
+    writeConfig();
+
     Homie.getLogger() << "Calibration Completed!" << endl;
+    digitalWrite(LED_BUILTIN_AUX, HIGH);
 
 }
 
 void calibrationReset()
 {
     Homie.getLogger() << "Calibration Reset!" << endl;
+    digitalWrite(LED_BUILTIN_AUX, LOW);
     tinSettings.offset = float(0);
     toutSettings.offset = float(0);
-    writeEEProm();
+    writeConfig();
+    delay(500);
+    digitalWrite(LED_BUILTIN_AUX, HIGH);
 }

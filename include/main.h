@@ -18,7 +18,6 @@
 #include <SolarCalculator.h>
 #include <Smoothed.h>
 #include <EasyButton.h>
-#include <EEPROM.h>
 
 // Debugging Defines >>>
 #define DEBUG 1
@@ -35,7 +34,7 @@
 #define LOOP_PROC_DLY         5*1E3
 #define LOOP_PUB_DLY         15*1E3
 #define LOOP_SLEEP_DLY       60*1E3
-#define LOOP_HB_DLY           1*1E3
+#define LOOP_HB_DLY           5*1E3
 #define LOOP_DAYLIGHT_DLY   720*1E3
 
 #define boolToStr(x) ((x)?"Yes":"No")
@@ -74,9 +73,7 @@
 #define DST_END_DAY      6
 #define DST_END_MONTH    11
 
-#define EEPROM_INIT_ID 812
-#define EEPROM_BYTES_REQUIRED 12
-
+#define CONFIG_PATH "/pool/config.json"
 
 //>> Structures
 struct PSHConfig
@@ -138,7 +135,6 @@ bool envAllowHeat();
 void calBtnISR();
 void calibratePoolTemps();
 void calibrationReset();
-void readEEProm();
-void initEEProm();
-void writeEEProm();
+void readConfig();
+void writeConfig();
 //<< Function Prototypes
