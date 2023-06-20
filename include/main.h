@@ -21,10 +21,11 @@
 
 // Debugging Defines >>>
 #define DEBUG 1
-//#define LOG_TO_TELNET 1
+#define LOG_TO_TELNET 1
 //#define NO_ENV_SOLAR_CHECK 1
-#define NO_ENV_SP_CHECK 1
+//#define NO_ENV_AIR_CHECK 1
 //#define NO_ENV_CLOUD_CHECK 1
+//#define NO_ENV_IN_OUT_DIFF_CHECK 1
 //#define DEBUG_FORCE_TIME 1687217416
 // <<< Debugging Defines
 
@@ -126,6 +127,8 @@ void printHelp();
 void onHomieEvent(const HomieEvent& event);
 #endif
 void toggleOverrideEnv();
+void toggleManualHeatingEnable();
+void toggleManualHeating();
 void getSolar(Solar * pSolar);
 void getDaylight(Daylight * pDaylight);
 void doProcess();
@@ -137,4 +140,6 @@ void calibratePoolTemps();
 void calibrationReset();
 void readConfig();
 void writeConfig();
+float ItoF(int val);
+int FtoI(float val);
 //<< Function Prototypes

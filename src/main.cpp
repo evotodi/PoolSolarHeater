@@ -60,31 +60,36 @@ unsigned long previousMillisDaylight = 0;
 bool isCloudy = false;
 bool isOvercast = false;
 bool atSetpoint = false;
-bool overrideEnv = false;
 bool isHeating = false;
+bool overrideEnv = false;
+bool manualHeatingEnable = false;
+bool manualHeating = false;
 
 int telnetBuffer;
 Smoothed<int16_t> light;
 char cloudyCnt = 0;
-Smoothed<float> tin;
-Smoothed<float> tout;
-Smoothed<float> air;
-Smoothed<float> pool;
+Smoothed<int> tin;
+Smoothed<int> tout;
+Smoothed<int> air;
+Smoothed<int> pool;
 auto solar = Solar{};
 auto daylight = Daylight{};
 
 void setup()
 {
+    pinMode(LED_BUILTIN_AUX, OUTPUT);
+    pinMode(RLY_PIN, OUTPUT);
+
 #ifdef DEBUG
     Serial.begin(115200);
 #else
     Homie.disableLogging();
 #endif
-    light.begin(SMOOTHED_AVERAGE, 3);
-    tin.begin(SMOOTHED_AVERAGE, 5);
-    tout.begin(SMOOTHED_AVERAGE, 5);
-    pool.begin(SMOOTHED_AVERAGE, 5);
-    air.begin(SMOOTHED_AVERAGE, 3);
+    light.begin(SMOOTHED_AVERAGE, 5);
+    tin.begin(SMOOTHED_AVERAGE, 10);
+    tout.begin(SMOOTHED_AVERAGE, 10);
+    pool.begin(SMOOTHED_AVERAGE, 10);
+    air.begin(SMOOTHED_AVERAGE, 5);
 
     WiFi.mode(WIFI_STA);
 
@@ -126,7 +131,6 @@ void setupHandler()
     TelnetServer.begin();
     Serial.print("Starting telnet server on port "); Serial.println(TELNET_PORT);
 #endif
-    pinMode(LED_BUILTIN_AUX, OUTPUT);
 
     timeClient.begin();
     yield();
@@ -218,26 +222,26 @@ void loopHandler()
         }
         yield();
 
-        tin.add(sensors.getTempF(tempSensorIn) + tinSettings.offset);
+        tin.add(FtoI(sensors.getTempF(tempSensorIn) + tinSettings.offset));
 
         yield();
-        tout.add(sensors.getTempF(tempSensorOut) + toutSettings.offset);
+        tout.add(FtoI(sensors.getTempF(tempSensorOut) + toutSettings.offset));
         yield();
 
-        Homie.getLogger() << "Tin = " << tin.getLast() << " °F  Tin Smooth = " << tin.get() << " °F " << endl;
-        Homie.getLogger() << "Tout = " << tout.getLast() << " °F  Tout Smooth = " << tout.get() << " °F " << endl;
+        Homie.getLogger() << "Tin = " << ItoF(tin.getLast()) << " °F  Tin Smooth = " << ItoF(tin.get()) << " °F " << endl;
+        Homie.getLogger() << "Tout = " << ItoF(tout.getLast()) << " °F  Tout Smooth = " << ItoF(tout.get()) << " °F " << endl;
         yield();
 
-        air.add(float(ntcAmbiant.readTempF(ADC_AMBIANT)));
-        Homie.getLogger() << "Air = " << air.getLast() << " °F  Air Smooth = " << air.get() << " °F" << endl;
+        air.add(FtoI( float(ntcAmbiant.readTempF(ADC_AMBIANT))));
+        Homie.getLogger() << "Air = " << ItoF(air.getLast()) << " °F  Air Smooth = " << ItoF(air.get()) << " °F" << endl;
         yield();
 
 #ifdef USE_TIN_AS_POOL
         pool.add(tin.getLast());
 #else
-        pool.add(float(ntcPool.readTempF(ADC_POOL)));
+        pool.add(FtoI(float(ntcPool.readTempF(ADC_POOL))));
 #endif
-        Homie.getLogger() << "Pool = " << pool.getLast() << " °F  Pool Smooth = " << pool.get() << " °F" << endl;
+        Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F" << endl;
         yield();
 
         light.add(mcp.analogRead(ADC_LIGHT));
@@ -317,7 +321,6 @@ void handleTelnet(){
             telnetBuffer = Telnet.read();
 
             switch (telnetBuffer) {
-                case 'h':
                 case '?':
                     printHelp();
                     break;
@@ -330,6 +333,12 @@ void handleTelnet(){
                 case 'o':
                     toggleOverrideEnv();
                     break;
+                case 'm':
+                    toggleManualHeatingEnable();
+                    break;
+                case 'h':
+                    toggleManualHeating();
+                    break;
                 default:
                     Serial.write(telnetBuffer);
             }
@@ -340,21 +349,28 @@ void handleTelnet(){
 void printHelp()
 {
     Homie.getLogger() << "Help:" << endl;
-    Homie.getLogger() << "h or ? - This help" << endl;
+    Homie.getLogger() << "? - This help" << endl;
     Homie.getLogger() << "r - Reboot" << endl;
     Homie.getLogger() << "X - Reset config to default!" << endl;
     Homie.getLogger() << "o - Toggle override environment (current: " << boolToStr(overrideEnv) << ")" << endl;
+    Homie.getLogger() << "m - Toggle manual heating enable (current: " << boolToStr(manualHeatingEnable) << ")" << endl;
+    Homie.getLogger() << "h - Toggle manual heating (current: " << boolToStr(manualHeating) << ")" << endl;
 
     delay(2000);
 }
 
 void onHomieEvent(const HomieEvent& event)
 {
-    if(event.type == HomieEventType::OTA_STARTED){
+    if(event.type == HomieEventType::OTA_STARTED) {
         if (TelnetServer.hasClient()) {
             TelnetServer.stop();
         }
         TelnetServer.close();
+    }
+
+    if(event.type == HomieEventType::WIFI_CONNECTED) {
+        Serial.print("Wi-Fi connected, IP: ");
+        Serial.println(event.ip);
     }
 }
 #endif
@@ -538,76 +554,68 @@ void strToAddress(const String &addr, DeviceAddress deviceAddress)
 void printAddress(DeviceAddress deviceAddress) 
 {
     for (uint8_t i = 0; i < 8; i++) {
-        if (deviceAddress[i] < 16) Serial.print("0");
-        Serial.print(deviceAddress[i], HEX);
+        if (deviceAddress[i] < 16) Homie.getLogger().print("0");
+        Homie.getLogger().print(deviceAddress[i], HEX);
     }
 }
 
 void setupOwSensors() 
 {
-#ifdef DEBUG
-    Serial.print("Locating devices...");
-#endif
+    Homie.getLogger() << "Locating one wire devices..." << endl;
+
     sensors.begin();
     sensors.setWaitForConversion(true);
 
-#ifdef DEBUG
-    Serial.print("Found ");
-    Serial.print(sensors.getDeviceCount(), DEC);
-    Serial.println(" devices.");
-#endif
+
+    Homie.getLogger() << "Found ";
+    Homie.getLogger().print(sensors.getDeviceCount(), DEC);
+    Homie.getLogger() << " devices." << endl;
+
     for (size_t i = 0; i < sensors.getDeviceCount(); i++) {
         if (sensors.getAddress(tempDeviceAddress, i)) {
-#ifdef DEBUG
-            Serial.print("Found device ");
-            Serial.print(i, DEC);
-            Serial.print(" with address: ");
+            Homie.getLogger() << "Found device ";
+            Homie.getLogger().print(i, DEC);
+            Homie.getLogger() << " with address: ";
             printAddress(tempDeviceAddress);
-            Serial.println();
+            Homie.getLogger() << endl;
+            Homie.getLogger() << "Setting resolution to ";
+            Homie.getLogger().print(DS_TEMP_PRECISION, DEC);
+            Homie.getLogger() << endl;
 
-            Serial.print("Setting resolution to ");
-            Serial.println(DS_TEMP_PRECISION, DEC);
-#endif
             // set the resolution to TEMPERATURE_PRECISION bit (Each Dallas/Maxim device is capable of several different resolutions)
             sensors.setResolution(tempDeviceAddress, DS_TEMP_PRECISION);
 
-#ifdef DEBUG
-            Serial.print("Resolution actually set to: ");
-            Serial.print(sensors.getResolution(tempDeviceAddress), DEC);
-            Serial.println();
-#endif
+            Homie.getLogger() << "Resolution actually set to: ";
+            Homie.getLogger().print(sensors.getResolution(tempDeviceAddress), DEC);
+            Homie.getLogger() << endl;
         } else {
-#ifdef DEBUG
-            Serial.print("Found ghost device at ");
-            Serial.print(i, DEC);
-            Serial.print(" but could not detect address. Check power and cabling");
-#endif
+            Homie.getLogger() << "Found ghost device at ";
+            Homie.getLogger().print(i, DEC);
+            Homie.getLogger() << " but could not detect address. Check power and cabling" << endl;
         }
     }
 
-#ifdef DEBUG
     if (sensors.isConnected(tempSensorIn)) {
-        Serial.print("Temp sensor IN Address: ");
+        Homie.getLogger() << "Temp sensor IN Address: ";
         printAddress(tempSensorIn);
-        Serial.println();
-        Serial.print("Temp sensor IN resolution: ");
-        Serial.print(sensors.getResolution(tempSensorIn), DEC);
-        Serial.println();
+        Homie.getLogger() << endl;
+        Homie.getLogger() << "Temp sensor IN resolution: ";
+        Homie.getLogger().print(sensors.getResolution(tempSensorIn), DEC);
+        Homie.getLogger() << endl;
     } else {
-        Serial.println("Temp sensor IN is not connected !");
+        Homie.getLogger() << "Temp sensor IN is not connected !" << endl;
     }
 
     if (sensors.isConnected(tempSensorOut)) {
-        Serial.print("Temp sensor OUT Address: ");
+        Homie.getLogger() << "Temp sensor OUT Address: ";
         printAddress(tempSensorOut);
-        Serial.println();
-        Serial.print("Temp sensor OUT resolution: ");
-        Serial.print(sensors.getResolution(tempSensorOut), DEC);
-        Serial.println();
+        Homie.getLogger() << endl;
+        Homie.getLogger() << "Temp sensor OUT resolution: ";
+        Homie.getLogger().print(sensors.getResolution(tempSensorOut), DEC);
+        Homie.getLogger() << endl;
     } else {
-        Serial.println("Temp sensor OUT is not connected !");
+        Homie.getLogger() << "Temp sensor OUT is not connected !" << endl;
     }
-#endif
 }
 
 int16_t mcpReadCallback(uint8_t channel) 
@@ -665,6 +673,57 @@ void parseDTSettings(DTSetting * pDTSetting, const char * settings, const char *
 void toggleOverrideEnv()
 {
     overrideEnv = !overrideEnv;
+    if(overrideEnv) {
+        Homie.getLogger() << "Environment Override Enabled !" << endl;
+    }else{
+        Homie.getLogger() << "Environment Override Disabled !" << endl;
+        manualHeating = false;
+        manualHeatingEnable = false;
+    }
+}
+
+void toggleManualHeatingEnable()
+{
+    if(!overrideEnv){
+        Homie.getLogger() << F("✖ Must override the environment for manual heating") << endl;
+        manualHeatingEnable = false;
+        return;
+    }
+
+    manualHeatingEnable = !manualHeatingEnable;
+
+    if(manualHeatingEnable) {
+        Homie.getLogger() << "Environment Manual Heating Enabled !" << endl;
+        manualHeating = isHeating;
+    }else{
+        Homie.getLogger() << "Environment Manual Heating Disabled !" << endl;
+        manualHeating = false;
+        turnHeatOff();
+    }
+
+}
+
+void toggleManualHeating()
+{
+    if(!overrideEnv){
+        Homie.getLogger() << F("✖ Must override the environment for manual heating") << endl;
+        manualHeating = false;
+        return;
+    }
+
+    if(!manualHeatingEnable){
+        Homie.getLogger() << F("✖ Must enable manual heating first") << endl;
+        manualHeating = false;
+        return;
+    }
+
+    manualHeating = !manualHeating;
+
+    if(manualHeating) {
+        turnHeatOn();
+    }else{
+        turnHeatOff();
+    }
 }
 
 void getSolar(Solar * pSolar)
@@ -718,14 +777,18 @@ void getDaylight(Daylight * pDaylight)
 
 void doProcess()
 {
-    if(pool.get() >= pshConfigs.setpoint) {
+    if(manualHeatingEnable) {
+        return;
+    }
+
+    if(ItoF(pool.get()) >= pshConfigs.setpoint) {
         Homie.getLogger() << "Set point reached" << endl;
         turnHeatOff();
         atSetpoint = true;
         return;
     }
 
-    if(pool.get() < (pshConfigs.setpoint - pshConfigs.swing)){
+    if(ItoF(pool.get()) < (pshConfigs.setpoint - pshConfigs.swing)){
         atSetpoint = false;
     }
 
@@ -782,7 +845,7 @@ bool envAllowHeat()
 #endif
 
 #ifndef NO_ENV_CLOUD_CHECK
-    if(isOvercast && air.get() < pshConfigs.setpoint){
+    if(isOvercast && ItoF(air.get()) < pshConfigs.setpoint){
         Homie.getLogger() << "Env: Overcast and too cool outside" << endl;
         rtn = false;
     }
@@ -790,9 +853,9 @@ bool envAllowHeat()
     Homie.getLogger() << "Env: Skip cloud check" << endl;
 #endif
 
-#ifndef NO_ENV_SP_CHECK
-    if (air < pshConfigs.setpoint) {
-        if ((int(tin)) < (int(air) + pshConfigs.airDiff)) {
+#ifndef NO_ENV_AIR_CHECK
+    if (ItoF(air.get()) < pshConfigs.setpoint) {
+        if ((ItoF(air.get()) + pshConfigs.airDiff) < ItoF(tin.get())) {
             Homie.getLogger() << "Env: Temp in to air not enough diff" << endl;
             rtn = false;
         }
@@ -801,11 +864,14 @@ bool envAllowHeat()
     Homie.getLogger() << "Env: Skip set-point check" << endl;
 #endif
 
-    if(int(tout.get()) < int(tin.get())) {
+#ifndef NO_ENV_IN_OUT_DIFF_CHECK
+    if(tout.get() < tin.get()) {
         Homie.getLogger() << "Env: Temp out less than temp in" << endl;
         rtn = false;
     }
-
+#else
+    Homie.getLogger() << "Env: Skip tin to tout diff check" << endl;
+#endif
     return rtn;
 }
 
@@ -825,17 +891,17 @@ void calibratePoolTemps()
         sensors.requestTemperatures();
         delay(100);
 
-        tin.add(sensors.getTempF(tempSensorIn) + tinSettings.offset);
-        tout.add(sensors.getTempF(tempSensorOut) + toutSettings.offset);
+        tin.add(FtoI(sensors.getTempF(tempSensorIn)));
+        tout.add(FtoI(sensors.getTempF(tempSensorOut)));
 
-        Homie.getLogger() << "Tin = " << tin.getLast() << " °F  Tin Smooth = " << tin.get() << " °F " << endl;
-        Homie.getLogger() << "Tout = " << tout.getLast() << " °F  Tout Smooth = " << tout.get() << " °F " << endl;
+        Homie.getLogger() << "Tin = " << ItoF(tin.getLast()) << " °F  Tin Smooth = " << ItoF(tin.get()) << " °F " << endl;
+        Homie.getLogger() << "Tout = " << ItoF(tout.getLast()) << " °F  Tout Smooth = " << ItoF(tout.get()) << " °F " << endl;
 
 #ifdef USE_TIN_AS_POOL
         pool.add(tin.getLast());
 #else
-        pool.add(float(ntcPool.readTempF(ADC_POOL)));
-        Homie.getLogger() << "Pool = " << pool.getLast() << " °F  Pool Smooth = " << pool.get() << " °F" << endl;
+        pool.add(FtoI(float(ntcPool.readTempF(ADC_POOL))));
+        Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F" << endl;
 #endif
         yield();
     }
@@ -845,8 +911,8 @@ void calibratePoolTemps()
 #ifdef USE_TIN_AS_POOL
     toutSettings.offset = tin.get() - tout.get();
 #else
-    tinSettings.offset = pool.get() - tin.get();
-    toutSettings.offset = pool.get() - tout.get();
+    tinSettings.offset = ItoF(pool.get()) - ItoF(tin.get());
+    toutSettings.offset = ItoF(pool.get()) - ItoF(tout.get());
 #endif
 
     Homie.getLogger() << "Offsets: tin = " << tinSettings.offset << " °F  tout = " << toutSettings.offset << " °F" << endl;
@@ -867,4 +933,14 @@ void calibrationReset()
     writeConfig();
     delay(500);
     digitalWrite(LED_BUILTIN_AUX, HIGH);
+}
+
+float ItoF(const int val)
+{
+    return (float) val / 10;
+}
+
+int FtoI(const float val)
+{
+    return (int) roundf(val * 10);
 }
