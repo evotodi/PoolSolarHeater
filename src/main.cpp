@@ -827,6 +827,7 @@ bool envAllowHeat()
     bool rtn = true;
 
     if(overrideEnv){
+        Homie.getLogger() << "Env: Override enabled !" << endl;
         return true;
     }
 
