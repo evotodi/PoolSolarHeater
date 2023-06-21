@@ -29,14 +29,11 @@
 //#define DEBUG_FORCE_TIME 1687217416
 // <<< Debugging Defines
 
-//#define USE_TIN_AS_POOL 1
-
 #define LOOP_DAT_DLY          5*1E3
 #define LOOP_PROC_DLY         5*1E3
 #define LOOP_PUB_DLY         15*1E3
-#define LOOP_SLEEP_DLY       60*1E3
 #define LOOP_HB_DLY           5*1E3
-#define LOOP_DAYLIGHT_DLY   720*1E3
+#define LOOP_DAYLIGHT_DLY   1800*1E3
 
 #define boolToStr(x) ((x)?"Yes":"No")
 
@@ -58,7 +55,7 @@
 #define ADC_AMBIANT    1
 #define ADC_POOL       2
 
-#define CLOUDY_DEFAULT      400
+#define CLOUDY_DEFAULT      2800
 #define OVERCAST_CNT    3
 
 #define SP_DEFAULT        95.0
@@ -66,9 +63,11 @@
 #define ELV_AM_DEFAULT 30.0
 #define ELV_PM_DEFAULT 30.0
 #define AIR_DIFF_DEFAULT 10.0
+#define POOL_TEMP_IN_DEFAULT 1 // See struct PSHConfig
+#define TIN_DIFF_MAX_DEFAULT 4.0
 
-#define TIME_OFFSET_DST  -14400
-#define TIME_OFFSET_ST  -18000
+#define TIME_OFFSET_DST_HOURS -4
+#define TIME_OFFSET_ST_HOURS -5
 #define DST_BEGIN_DAY    13
 #define DST_BEGIN_MONTH  3
 #define DST_END_DAY      6
@@ -85,6 +84,8 @@ struct PSHConfig
     float airDiff;
     float elevationMinAM;
     float elevationMinPM;
+    uint16_t poolTempIn; // 0 = tin 1 = ntc
+    float tinDiffMax;
 };
 
 struct DTSetting
@@ -112,12 +113,12 @@ struct Daylight
 void setupHandler();
 void loopHandler();
 time_t getNtpTime();
-const char* getTimestamp();
+int getTimeOffset(const time_t * t, bool asHours = false);
+const char* getTimestamp(bool withOffset = false);
 void strToAddress(const String& addr, DeviceAddress deviceAddress);
 void printAddress(DeviceAddress deviceAddress);
 void setupOwSensors();
 int16_t mcpReadCallback(uint8_t channel);
-int16_t adcReadCallback(uint8_t channel);
 void parseNTCSettings(const char * settings, const char * name, ThermistorSettings * ts);
 void parsePSHSettings(PSHConfig * pPSHConfig, const char * settings, const char * name);
 void parseDTSettings(DTSetting * pDTSetting, const char * settings, const char * name);
@@ -129,6 +130,10 @@ void onHomieEvent(const HomieEvent& event);
 void toggleOverrideEnv();
 void toggleManualHeatingEnable();
 void toggleManualHeating();
+void toggleEnvNoCheckSolar();
+void toggleEnvNoCheckAir();
+void toggleEnvNoCheckCloud();
+void toggleEnvNoCheckTDiff();
 void getSolar(Solar * pSolar);
 void getDaylight(Daylight * pDaylight);
 void doProcess();
@@ -141,5 +146,7 @@ void calibrationReset();
 void readConfig();
 void writeConfig();
 float ItoF(int val);
+String ItoS(int val);
 int FtoI(float val);
+void addPoolTemp();
 //<< Function Prototypes

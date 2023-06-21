@@ -21,29 +21,28 @@ MCP3204 mcp(MCP_DIN, MCP_DOUT, MCP_CLK);
 char timestampStrBuf[1024];
 EasyStringStream timestampStream(timestampStrBuf, 1024);
 
-PSHConfig pshConfigs = {int16_t(CLOUDY_DEFAULT), float(SP_DEFAULT), float(SP_HYSTERESIS_DEFAULT), float(AIR_DIFF_DEFAULT), float(ELV_AM_DEFAULT), float(ELV_PM_DEFAULT)};
+PSHConfig pshConfigs = {int16_t(CLOUDY_DEFAULT), float(SP_DEFAULT), float(SP_HYSTERESIS_DEFAULT), float(AIR_DIFF_DEFAULT), float(ELV_AM_DEFAULT), float(ELV_PM_DEFAULT), POOL_TEMP_IN_DEFAULT};
 DTSetting tinSettings = {"0000000000000000", float(0)};
 DTSetting toutSettings = {"0000000000000000", float(0)};
 
 ThermistorSettings ambiantSettings = {5.0, 5.0, 100000, 100000, 25, 4096, 3950, 5, 20};
 Thermistor ntcAmbiant(mcpReadCallback, ambiantSettings);
 
-#ifndef USE_TIN_AS_POOL
 ThermistorSettings poolSettings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
 Thermistor ntcPool(mcpReadCallback, poolSettings); // Labeled F1 in box
-#endif
 
 Oversampling adc(10, 12, 2);
 
 EasyButton calBtn(CAL_PIN);
 
+HomieNode statusNode("status", "Status", "string");
+HomieNode valuesNode("values", "Values", "string");
+
 HomieSetting<const char *> configSetting("config", "config kv");
 HomieSetting<const char *> ambiantSetting("ambiant", "ambiant kv");
 HomieSetting<const char *> tinSetting("tin", "tin json");
 HomieSetting<const char *> toutSetting("tout", "tout json");
-#ifndef USE_TIN_AS_POOL
 HomieSetting<const char *> poolSetting("pool", "pool kv");
-#endif
 
 unsigned long currentMillis = 0;
 unsigned long intervalData = LOOP_DAT_DLY;
@@ -65,6 +64,11 @@ bool overrideEnv = false;
 bool manualHeatingEnable = false;
 bool manualHeating = false;
 
+bool envCheckNoSolar = false;
+bool envCheckNoAir = false;
+bool envCheckNoCloud = false;
+bool envCheckNoTDiff = false;
+
 int telnetBuffer;
 Smoothed<int16_t> light;
 char cloudyCnt = 0;
@@ -74,6 +78,8 @@ Smoothed<int> air;
 Smoothed<int> pool;
 auto solar = Solar{};
 auto daylight = Daylight{};
+char statusBuffer[1024];
+EasyStringStream status(statusBuffer, 1024);
 
 void setup()
 {
@@ -85,11 +91,13 @@ void setup()
 #else
     Homie.disableLogging();
 #endif
-    light.begin(SMOOTHED_AVERAGE, 5);
+    light.begin(SMOOTHED_AVERAGE, 3);
     tin.begin(SMOOTHED_AVERAGE, 10);
     tout.begin(SMOOTHED_AVERAGE, 10);
     pool.begin(SMOOTHED_AVERAGE, 10);
     air.begin(SMOOTHED_AVERAGE, 5);
+
+    status.reset();
 
     WiFi.mode(WIFI_STA);
 
@@ -107,6 +115,23 @@ void setup()
     Homie_setFirmware("bare-minimum", "1.0.0")
     Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
     Homie_setBrand("PoolHeater")
+
+    valuesNode.advertise("tin").setName("TempIn").setDatatype("float").setUnit("F");
+    valuesNode.advertise("tout").setName("TempOut").setDatatype("float").setUnit("F");
+    valuesNode.advertise("air").setName("Air").setDatatype("float").setUnit("F");
+    valuesNode.advertise("pool").setName("Pool").setDatatype("float").setUnit("F");
+    valuesNode.advertise("light").setName("LightLvl").setDatatype("float").setUnit("");
+    valuesNode.advertise("azimuth").setName("Azimuth").setDatatype("float").setUnit("°");
+    valuesNode.advertise("elevation").setName("Elevation").setDatatype("float").setUnit("°");
+
+    statusNode.advertise("timestamp").setName("Timestamp").setDatatype("string").setUnit("");
+    statusNode.advertise("heating").setName("Heating").setDatatype("boolean");
+    statusNode.advertise("at_setpoint").setName("At Setpoint").setDatatype("string");
+    statusNode.advertise("cloudy").setName("Cloudy").setDatatype("string");
+    statusNode.advertise("overcast").setName("Overcast").setDatatype("string");
+    statusNode.advertise("env_override").setName("EnvOverride").setDatatype("boolean");
+    statusNode.advertise("man_heat").setName("ManualHeat").setDatatype("boolean");
+    statusNode.advertise("status").setName("Status").setDatatype("string");
 
 #ifdef LOG_TO_TELNET
     Homie.setLoggingPrinter(&Telnet);
@@ -159,7 +184,6 @@ void setupHandler()
     Homie.getLogger() << "Ambiant settings = " << ntcAmbiant.dumpSettings() << endl;
     yield();
 
-#ifndef USE_TIN_AS_POOL
     parseNTCSettings(poolSetting.get(), "Pool", &poolSettings);
     ntcPool.setSeriesResistor(&poolSettings.seriesResistor);
     ntcPool.setThermistorNominal(&poolSettings.thermistorNominal);
@@ -169,7 +193,6 @@ void setupHandler()
     ntcPool.setAnalogReference(&poolSettings.analogReference);
     Homie.getLogger() << "Pool settings = " << ntcPool.dumpSettings() << endl;
     yield();
-#endif
 
     setupOwSensors();
 
@@ -202,26 +225,6 @@ void loopHandler()
         sensors.requestTemperatures();
         delay(100);
 
-        if (isCloudy) {
-            intervalProc = LOOP_SLEEP_DLY;
-            intervalPub = LOOP_SLEEP_DLY;
-            previousMillisProc = 0;
-            cloudyCnt++;
-            if(cloudyCnt >= OVERCAST_CNT){
-                isOvercast = true;
-            }
-            yield();
-        } else {
-            intervalProc = LOOP_PROC_DLY;
-            intervalPub = LOOP_PUB_DLY;
-            isOvercast = false;
-            cloudyCnt = 0;
-        }
-        if(isOvercast){
-            cloudyCnt = OVERCAST_CNT;
-        }
-        yield();
-
         tin.add(FtoI(sensors.getTempF(tempSensorIn) + tinSettings.offset));
 
         yield();
@@ -236,20 +239,27 @@ void loopHandler()
         Homie.getLogger() << "Air = " << ItoF(air.getLast()) << " °F  Air Smooth = " << ItoF(air.get()) << " °F" << endl;
         yield();
 
-#ifdef USE_TIN_AS_POOL
-        pool.add(tin.getLast());
-#else
-        pool.add(FtoI(float(ntcPool.readTempF(ADC_POOL))));
-#endif
+        addPoolTemp();
         Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F" << endl;
         yield();
 
         light.add(mcp.analogRead(ADC_LIGHT));
         if (light.get() <= pshConfigs.cloudy) {
             isCloudy = true;
+            cloudyCnt++;
+            if(cloudyCnt >= OVERCAST_CNT){
+                isOvercast = true;
+            }
         } else {
             isCloudy = false;
+            isOvercast = false;
+            cloudyCnt = 0;
         }
+
+        if(isOvercast){
+            cloudyCnt = OVERCAST_CNT;
+        }
+
         Homie.getLogger() << "Light level = " << light.getLast() << " Light smoothed = " << light.get() << " Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << endl;
         yield();
 
@@ -274,6 +284,33 @@ void loopHandler()
 
         Homie.getLogger() << endl;
         previousMillisProc = currentMillis;
+    }
+    yield();
+    calBtn.update();
+
+    // Publish data
+    if (currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
+        Homie.getLogger() << "PUBLISH:" << endl;
+        statusNode.setProperty("timestamp").send(getTimestamp(true));
+        statusNode.setProperty("heating").send(isHeating ? "true" : "false");
+        statusNode.setProperty("at_setpoint").send(atSetpoint ? "true" : "false");
+        statusNode.setProperty("cloudy").send(isCloudy ? "true" : "false");
+        statusNode.setProperty("overcast").send(isOvercast ? "true" : "false");
+        statusNode.setProperty("env_override").send(overrideEnv ? "true" : "false");
+        statusNode.setProperty("man_heat").send(manualHeating ? "true" : "false");
+        statusNode.setProperty("status").send(status.get());
+
+        valuesNode.setProperty("tin").send(ItoS(tin.get()));
+        valuesNode.setProperty("tout").send(ItoS(tout.get()));
+        valuesNode.setProperty("air").send(ItoS(air.get()));
+        valuesNode.setProperty("pool").send(ItoS(pool.get()));
+        valuesNode.setProperty("light").send(String(light.get()));
+        valuesNode.setProperty("azimuth").send(String(solar.azimuth));
+        valuesNode.setProperty("elevation").send(String(solar.elevation));
+
+        Homie.getLogger() << "Published data" << endl;
+        Homie.getLogger() << endl;
+        previousMillisPub = currentMillis;
     }
     yield();
     calBtn.update();
@@ -339,6 +376,27 @@ void handleTelnet(){
                 case 'h':
                     toggleManualHeating();
                     break;
+                case 'u':
+                    calibratePoolTemps();
+                    break;
+                case 'i':
+                    calibrationReset();
+                    break;
+                case 'p':
+                    previousMillisPub = 0;
+                    break;
+                case 's':
+                    toggleEnvNoCheckSolar();
+                    break;
+                case 'a':
+                    toggleEnvNoCheckAir();
+                    break;
+                case 'c':
+                    toggleEnvNoCheckCloud();
+                    break;
+                case 'd':
+                    toggleEnvNoCheckTDiff();
+                    break;
                 default:
                     Serial.write(telnetBuffer);
             }
@@ -350,13 +408,25 @@ void printHelp()
 {
     Homie.getLogger() << "Help:" << endl;
     Homie.getLogger() << "? - This help" << endl;
+    Homie.getLogger() << endl;
     Homie.getLogger() << "r - Reboot" << endl;
-    Homie.getLogger() << "X - Reset config to default!" << endl;
+    Homie.getLogger() << "X - Reset config to default! (capital x)" << endl;
+    Homie.getLogger() << endl;
+    Homie.getLogger() << "u - Calibrate tin and tout to pool" << endl;
+    Homie.getLogger() << "i - Calibration Reset" << endl;
+    Homie.getLogger() << endl;
+    Homie.getLogger() << "p - Publish homie now" << endl;
+    Homie.getLogger() << endl;
     Homie.getLogger() << "o - Toggle override environment (current: " << boolToStr(overrideEnv) << ")" << endl;
     Homie.getLogger() << "m - Toggle manual heating enable (current: " << boolToStr(manualHeatingEnable) << ")" << endl;
     Homie.getLogger() << "h - Toggle manual heating (current: " << boolToStr(manualHeating) << ")" << endl;
+    Homie.getLogger() << endl;
+    Homie.getLogger() << "s - Toggle environment don't check solar (current: " << boolToStr(envCheckNoSolar) << ")" << endl;
+    Homie.getLogger() << "a - Toggle environment don't check air (current: " << boolToStr(envCheckNoAir) << ")" << endl;
+    Homie.getLogger() << "c - Toggle environment don't check cloudy (current: " << boolToStr(envCheckNoCloud) << ")" << endl;
+    Homie.getLogger() << "d - Toggle environment don't check tin tout diff (current: " << boolToStr(envCheckNoTDiff) << ")" << endl;
 
-    delay(2000);
+    delay(3000);
 }
 
 void onHomieEvent(const HomieEvent& event)
@@ -467,71 +537,111 @@ time_t getNtpTime()
 
 }
 
-int getTimeOffset(time_t t)
+int getTimeOffset(const time_t * t, bool asHours)
 {
-    if(month(t) == DST_BEGIN_MONTH && day(t) >= DST_BEGIN_DAY){
-        return TIME_OFFSET_DST;
+    if(month(*t) == DST_BEGIN_MONTH && day(*t) >= DST_BEGIN_DAY){
+        if(asHours) {
+            return TIME_OFFSET_DST_HOURS;
+        }else{
+            return TIME_OFFSET_DST_HOURS * 60 * 60;
+        }
     }
 
-    if(month(t) == DST_END_MONTH && day(t) <= DST_END_DAY){
-        return TIME_OFFSET_ST;
+    if(month(*t) == DST_END_MONTH && day(*t) <= DST_END_DAY){
+        if(asHours) {
+            return TIME_OFFSET_ST_HOURS;
+        }else{
+            return TIME_OFFSET_ST_HOURS * 60 * 60;
+        }
     }
 
-    if(month(t) > DST_BEGIN_MONTH && month(t) < DST_END_MONTH){
-        return TIME_OFFSET_DST;
+    if(month(*t) > DST_BEGIN_MONTH && month(*t) < DST_END_MONTH){
+        if(asHours) {
+            return TIME_OFFSET_DST_HOURS;
+        }else{
+            return TIME_OFFSET_DST_HOURS * 60 * 60;
+        }
     }
 
-    if(month(t) > DST_END_MONTH){
-        return TIME_OFFSET_ST;
+    if(month(*t) > DST_END_MONTH){
+        if(asHours) {
+            return TIME_OFFSET_ST_HOURS;
+        }else{
+            return TIME_OFFSET_ST_HOURS * 60 * 60;
+        }
     }
 
-    return TIME_OFFSET_DST;
+    if(asHours) {
+        return TIME_OFFSET_DST_HOURS;
+    }else{
+        return TIME_OFFSET_DST_HOURS * 60 * 60;
+    }
 }
 
-const char *getTimestamp() 
+const char *getTimestamp(bool withOffset)
 {
+    time_t tNow = now();
+    int offsetHours = getTimeOffset(&tNow, true);
+
+    if(withOffset){
+        tNow = tNow + (offsetHours * 60 * 60);
+    }
+
     timestampStream.reset();
-    timestampStream << String(year()) << "-";
+    timestampStream << String(year(tNow)) << "-";
 
     if (month() < 10) {
-        timestampStream << "0" << String(month());
+        timestampStream << "0" << String(month(tNow));
     } else {
-        timestampStream << String(month());
+        timestampStream << String(month(tNow));
     }
 
     timestampStream << "-";
 
     if (day() < 10) {
-        timestampStream << "0" << String(day());
+        timestampStream << "0" << String(day(tNow));
     } else {
-        timestampStream << String(day());
+        timestampStream << String(day(tNow));
     }
 
     timestampStream << "T";
 
     if (hour() < 10) {
-        timestampStream << "0" << String(hour());
+        timestampStream << "0" << String(hour(tNow));
     } else {
-        timestampStream << String(hour());
+        timestampStream << String(hour(tNow));
     }
 
     timestampStream << ":";
 
     if (minute() < 10) {
-        timestampStream << "0" << String(minute());
+        timestampStream << "0" << String(minute(tNow));
     } else {
-        timestampStream << String(minute());
+        timestampStream << String(minute(tNow));
     }
 
     timestampStream << ":";
 
     if (second() < 10) {
-        timestampStream << "0" << String(second());
+        timestampStream << "0" << String(second(tNow));
     } else {
-        timestampStream << String(second());
+        timestampStream << String(second(tNow));
     }
 
-    timestampStream << ".00+00:00";
+    if(withOffset){
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "ConstantConditionsOC"
+        if(offsetHours < 0){
+            timestampStream << ".00-0" << abs(offsetHours) << ":00";
+        }else{
+            timestampStream << ".00+0" << abs(offsetHours) << ":00";
+        }
+#pragma clang diagnostic pop
+
+    }else{
+        timestampStream << ".00+00:00";
+    }
+
     // Serial.println("TIMESTAMP = " + String(timestampStream.get()));
     return timestampStream.get();
 }
@@ -623,11 +733,6 @@ int16_t mcpReadCallback(uint8_t channel)
     return mcp.analogRead(channel);
 }
 
-int16_t adcReadCallback(uint8_t channel) 
-{
-    return int16_t(adc.read(channel));
-}
-
 void parseNTCSettings(const char * settings, const char * name, ThermistorSettings * ts)
 {
     sscanf(settings, "vcc=%lf;adcRef=%lf;serRes=%lf", // NOLINT(cert-err34-c)
@@ -643,8 +748,8 @@ void parseNTCSettings(const char * settings, const char * name, ThermistorSettin
 
 void parsePSHSettings(PSHConfig * pPSHConfig, const char * settings, const char * name)
 {
-    sscanf(settings, "cloudy=%hi;setpoint=%f;swing=%f;airDiff=%f;sunMinElvAM=%f;sunMinElvPM=%f", // NOLINT(cert-err34-c)
-           &pPSHConfig->cloudy, &pPSHConfig->setpoint, &pPSHConfig->swing, &pPSHConfig->airDiff, &pPSHConfig->elevationMinAM, &pPSHConfig->elevationMinPM
+    sscanf(settings, "cloudy=%hi;setpoint=%f;swing=%f;airDiff=%f;sunMinElvAM=%f;sunMinElvPM=%f;poolTempIn=%hi;tinDiffMax=%f", // NOLINT(cert-err34-c)
+           &pPSHConfig->cloudy, &pPSHConfig->setpoint, &pPSHConfig->swing, &pPSHConfig->airDiff, &pPSHConfig->elevationMinAM, &pPSHConfig->elevationMinPM, &pPSHConfig->poolTempIn, &pPSHConfig->tinDiffMax
     );
 
     Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
@@ -654,6 +759,8 @@ void parsePSHSettings(PSHConfig * pPSHConfig, const char * settings, const char 
     Homie.getLogger() << "Min Air->Water Diff = " << pPSHConfig->airDiff << endl;
     Homie.getLogger() << "Min Sun Elevation AM = " << pPSHConfig->elevationMinAM << endl;
     Homie.getLogger() << "Min Sun Elevation PM = " << pPSHConfig->elevationMinPM << endl;
+    Homie.getLogger() << "Pool Temp In = " << pPSHConfig->poolTempIn << endl;
+    Homie.getLogger() << "TIN -> TOUT Diff Max = " << pPSHConfig->tinDiffMax << endl;
     Homie.getLogger() << endl;
 }
 
@@ -679,6 +786,10 @@ void toggleOverrideEnv()
         Homie.getLogger() << "Environment Override Disabled !" << endl;
         manualHeating = false;
         manualHeatingEnable = false;
+        envCheckNoSolar = false;
+        envCheckNoAir = false;
+        envCheckNoCloud = false;
+        envCheckNoTDiff = false;
     }
 }
 
@@ -723,6 +834,50 @@ void toggleManualHeating()
         turnHeatOn();
     }else{
         turnHeatOff();
+    }
+}
+
+void toggleEnvNoCheckSolar()
+{
+    envCheckNoSolar = !envCheckNoSolar;
+
+    if(envCheckNoSolar) {
+        Homie.getLogger() << "Environment don't check solar" << endl;
+    }else{
+        Homie.getLogger() << "Environment check solar" << endl;
+    }
+}
+
+void toggleEnvNoCheckAir()
+{
+    envCheckNoAir = !envCheckNoAir;
+
+    if(envCheckNoAir) {
+        Homie.getLogger() << "Environment don't check air" << endl;
+    }else{
+        Homie.getLogger() << "Environment check air" << endl;
+    }
+}
+
+void toggleEnvNoCheckCloud()
+{
+    envCheckNoCloud = !envCheckNoCloud;
+
+    if(envCheckNoCloud) {
+        Homie.getLogger() << "Environment don't check cloudy" << endl;
+    }else{
+        Homie.getLogger() << "Environment check cloudy" << endl;
+    }
+}
+
+void toggleEnvNoCheckTDiff()
+{
+    envCheckNoTDiff = !envCheckNoTDiff;
+
+    if(envCheckNoTDiff) {
+        Homie.getLogger() << "Environment don't check tin tout diff" << endl;
+    }else{
+        Homie.getLogger() << "Environment check tin tout diff" << endl;
     }
 }
 
@@ -825,53 +980,76 @@ bool turnHeatOff()
 bool envAllowHeat()
 {
     bool rtn = true;
+    status.reset();
 
     if(overrideEnv){
         Homie.getLogger() << "Env: Override enabled !" << endl;
+        status << "ENV: Override EN\n";
         return true;
     }
 
 #ifndef NO_ENV_SOLAR_CHECK
-    time_t t = now();
-    if(t < daylight.midday && solar.elevation <= pshConfigs.elevationMinAM) {
-        Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below morning minimum " << pshConfigs.elevationMinAM << "°" << endl;
-        rtn = false;
-    }
-    if(t >= daylight.midday && solar.elevation <= pshConfigs.elevationMinPM) {
-        Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below evening minimum " << pshConfigs.elevationMinPM << "°" << endl;
-        rtn = false;
+    if(!envCheckNoSolar) {
+        time_t t = now();
+        if (t < daylight.midday && solar.elevation <= pshConfigs.elevationMinAM) {
+            Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below morning minimum " << pshConfigs.elevationMinAM << "°" << endl;
+            status << "ENV: Below AM Elv\n";
+            rtn = false;
+        }
+        if (t >= daylight.midday && solar.elevation <= pshConfigs.elevationMinPM) {
+            Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below evening minimum " << pshConfigs.elevationMinPM << "°" << endl;
+            status << "ENV: Below PM Elv\n";
+            rtn = false;
+        }
+    }else{
+        Homie.getLogger() << "Env: Skip solar check" << endl;
     }
 #else
-    Homie.getLogger() << "Env: Skip solar check" << endl;
+    Homie.getLogger() << "Env: Skip solar check by define" << endl;
 #endif
 
 #ifndef NO_ENV_CLOUD_CHECK
-    if(isOvercast && ItoF(air.get()) < pshConfigs.setpoint){
-        Homie.getLogger() << "Env: Overcast and too cool outside" << endl;
-        rtn = false;
+    if(!envCheckNoCloud) {
+        if (isOvercast && ItoF(air.get()) < pshConfigs.setpoint) {
+            Homie.getLogger() << "Env: Overcast and too cool outside" << endl;
+            status << "ENV: Overcast and Cold\n";
+            rtn = false;
+        }
+    }else {
+        Homie.getLogger() << "Env: Skip cloud check" << endl;
     }
 #else
-    Homie.getLogger() << "Env: Skip cloud check" << endl;
+    Homie.getLogger() << "Env: Skip cloud check by define" << endl;
 #endif
 
 #ifndef NO_ENV_AIR_CHECK
-    if (ItoF(air.get()) < pshConfigs.setpoint) {
-        if ((ItoF(air.get()) + pshConfigs.airDiff) < ItoF(tin.get())) {
-            Homie.getLogger() << "Env: Temp in to air not enough diff" << endl;
-            rtn = false;
+    if(!envCheckNoAir) {
+        if (ItoF(air.get()) < pshConfigs.setpoint) {
+            if ((ItoF(air.get()) + pshConfigs.airDiff) < ItoF(tin.get())) {
+                Homie.getLogger() << "Env: Temp in to air not enough diff" << endl;
+                status << "ENV: TIN -> Air diff to small\n";
+                rtn = false;
+            }
         }
+    } else {
+        Homie.getLogger() << "Env: Skip set-point check" << endl;
     }
 #else
-    Homie.getLogger() << "Env: Skip set-point check" << endl;
+    Homie.getLogger() << "Env: Skip set-point check by define" << endl;
 #endif
 
 #ifndef NO_ENV_IN_OUT_DIFF_CHECK
-    if(tout.get() < tin.get()) {
-        Homie.getLogger() << "Env: Temp out less than temp in" << endl;
-        rtn = false;
+    if(!envCheckNoTDiff) {
+        if (ItoF(tout.get()) < (ItoF(tin.get()) - pshConfigs.tinDiffMax)) {
+            Homie.getLogger() << "Env: Temp out less than temp in" << endl;
+            status << "ENV: TOUT < TIN\n";
+            rtn = false;
+        }
+    }else {
+        Homie.getLogger() << "Env: Skip tin to tout diff check" << endl;
     }
 #else
-    Homie.getLogger() << "Env: Skip tin to tout diff check" << endl;
+    Homie.getLogger() << "Env: Skip tin to tout diff check by define" << endl;
 #endif
     return rtn;
 }
@@ -886,6 +1064,9 @@ void calibratePoolTemps()
     Homie.getLogger() << "Calibration Started!" << endl;
     digitalWrite(LED_BUILTIN_AUX, LOW);
     delay(2000);
+    tin.clear();
+    tout.clear();
+    pool.clear();
 
     for (int i = 0; i < 10; i++) {
         digitalWrite(LED_BUILTIN_AUX, !digitalRead(LED_BUILTIN_AUX));
@@ -894,27 +1075,24 @@ void calibratePoolTemps()
 
         tin.add(FtoI(sensors.getTempF(tempSensorIn)));
         tout.add(FtoI(sensors.getTempF(tempSensorOut)));
-
+        addPoolTemp();
         Homie.getLogger() << "Tin = " << ItoF(tin.getLast()) << " °F  Tin Smooth = " << ItoF(tin.get()) << " °F " << endl;
         Homie.getLogger() << "Tout = " << ItoF(tout.getLast()) << " °F  Tout Smooth = " << ItoF(tout.get()) << " °F " << endl;
-
-#ifdef USE_TIN_AS_POOL
-        pool.add(tin.getLast());
-#else
-        pool.add(FtoI(float(ntcPool.readTempF(ADC_POOL))));
         Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F" << endl;
-#endif
+
         yield();
     }
 
     digitalWrite(LED_BUILTIN_AUX, LOW);
 
-#ifdef USE_TIN_AS_POOL
-    toutSettings.offset = tin.get() - tout.get();
-#else
-    tinSettings.offset = ItoF(pool.get()) - ItoF(tin.get());
-    toutSettings.offset = ItoF(pool.get()) - ItoF(tout.get());
-#endif
+    if(pshConfigs.poolTempIn == 0) {
+        toutSettings.offset = ItoF(tin.get()) - ItoF(tout.get());
+    } else if(pshConfigs.poolTempIn == 1) {
+        tinSettings.offset = ItoF(pool.get()) - ItoF(tin.get());
+        toutSettings.offset = ItoF(pool.get()) - ItoF(tout.get());
+    }else{
+        Homie.getLogger() << F("✖ Invalid poolTemp type: ") << pshConfigs.poolTempIn << endl;
+    }
 
     Homie.getLogger() << "Offsets: tin = " << tinSettings.offset << " °F  tout = " << toutSettings.offset << " °F" << endl;
 
@@ -941,7 +1119,23 @@ float ItoF(const int val)
     return (float) val / 10;
 }
 
+String ItoS(int val)
+{
+    return String(ItoF(val));
+}
+
 int FtoI(const float val)
 {
     return (int) roundf(val * 10);
+}
+
+void addPoolTemp()
+{
+    if(pshConfigs.poolTempIn == 0) {
+        pool.add(tin.getLast());
+    } else if(pshConfigs.poolTempIn == 1) {
+        pool.add(FtoI(float(ntcPool.readTempF(ADC_POOL))));
+    }else{
+        Homie.getLogger() << F("✖ Invalid poolTemp type: ") << pshConfigs.poolTempIn << endl;
+    }
 }
