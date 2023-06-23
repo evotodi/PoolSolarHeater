@@ -125,7 +125,7 @@ void setup()
     valuesNode.advertise("elevation").setName("Elevation").setDatatype("float").setUnit("°");
 
     statusNode.advertise("timestamp").setName("Timestamp").setDatatype("string").setUnit("");
-    statusNode.advertise("heating").setName("Heating").setDatatype("boolean");
+    statusNode.advertise("heating").setName("Heating").setDatatype("boolean").settable(mqttHeatOnHandler);
     statusNode.advertise("at_setpoint").setName("At Setpoint").setDatatype("string");
     statusNode.advertise("cloudy").setName("Cloudy").setDatatype("string");
     statusNode.advertise("overcast").setName("Overcast").setDatatype("string");
@@ -1007,7 +1007,8 @@ bool envAllowHeat()
 #else
     Homie.getLogger() << "Env: Skip solar check by define" << endl;
 #endif
-
+    // todo-evo: Need to store set point and cloudy and air diff and solar elevations in flash and allow change from mqtt
+    // todo-evo: Cloudy should be 3700 or less and overcast count should be increased
 #ifndef NO_ENV_CLOUD_CHECK
     if(!envCheckNoCloud) {
         if (isOvercast && ItoF(air.get()) < pshConfigs.setpoint) {
@@ -1038,6 +1039,7 @@ bool envAllowHeat()
     Homie.getLogger() << "Env: Skip set-point check by define" << endl;
 #endif
 
+    // todo-evo: This needs fixed tin and tout can only be check while running
 #ifndef NO_ENV_IN_OUT_DIFF_CHECK
     if(!envCheckNoTDiff) {
         if (ItoF(tout.get()) < (ItoF(tin.get()) - pshConfigs.tinDiffMax)) {
@@ -1138,4 +1140,26 @@ void addPoolTemp()
     }else{
         Homie.getLogger() << F("✖ Invalid poolTemp type: ") << pshConfigs.poolTempIn << endl;
     }
+}
+
+bool mqttHeatOnHandler(const HomieRange& range, const String& value)
+{
+    if (value != "true" && value != "false") return false;
+    bool on = (value == "true");
+
+    if(on){
+        overrideEnv = true;
+        manualHeatingEnable = true;
+        manualHeating = true;
+        turnHeatOn();
+    }else{
+        overrideEnv = false;
+        manualHeatingEnable = false;
+        manualHeating = false;
+        turnHeatOff();
+    }
+    statusNode.setProperty("heating").send(value);
+    Homie.getLogger() << "MQTT Pump is forced " << (on ? "on" : "off") << endl;
+
+    return true;
 }

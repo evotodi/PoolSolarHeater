@@ -149,4 +149,5 @@ float ItoF(int val);
 String ItoS(int val);
 int FtoI(float val);
 void addPoolTemp();
+bool mqttHeatOnHandler(const HomieRange& range, const String& value);
 //<< Function Prototypes
