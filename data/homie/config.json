@@ -17,7 +17,7 @@
       "enabled": true
     },
     "settings": {
-      "config": "cloudy=2800;setpoint=92.0;swing=2.0;airDiff=15.0;sunMinElvAM=40.0;sunMinElvPM=30.0;poolTempIn=1;tinDiffMax=4.0",
+      "config": "cloudy=3600;setpoint=92.0;swing=2.0;airDiff=15.0;sunMinElvAM=55.0;sunMinElvPM=22.0;poolTempIn=1;tinDiffMax=4.0",
       "ambiant": "vcc=5.0;adcRef=5.0;serRes=120000",
       "pool": "vcc=5.0;adcRef=5.0;serRes=9700",
       "tin": "addr=289D6F49F67A3CF8",
