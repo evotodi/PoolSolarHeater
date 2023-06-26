@@ -1,4 +1,36 @@
 {
-  "tinOffset": 0.0,
-  "toutOffset": 0.0
+  "config": {
+    "cloudy": 3550,
+    "overcastCnt": 20,
+    "sunMinElvAM": 50.0,
+    "sunMinElvPM": 22.0,
+    "setPoint": 92.0,
+    "setPointSwing": 2.0,
+    "airPoolDiff": 10.0,
+    "poolTempIn": 1
+  },
+  "probeOffsets": {
+    "air": 0.0,
+    "pool": 0.0,
+    "tin": 0.0,
+    "tout": 0.0
+  },
+  "probeSettings": {
+    "air": "vcc=5.0;adcRef=5.0;serRes=120000",
+    "pool": "vcc=5.0;adcRef=5.0;serRes=9700",
+    "tin": "addr=289D6F49F67A3CF8",
+    "tout": "addr=283E4749F6C13C1A"
+  },
+  "time": {
+    "dstOffset": -4,
+    "stOffset": -5,
+    "dstBeginDay": 13,
+    "dstBeginMonth":  3,
+    "dstEndDay": 6,
+    "dstEndMonth": 11
+  },
+  "location": {
+    "latitude": 38.502539,
+    "longitude": -86.163691
+  }
 }

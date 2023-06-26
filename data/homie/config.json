@@ -3,11 +3,11 @@
     "device_id": "poolheater",
     "device_stats_interval": 300,
     "wifi": {
-      "ssid": "DavisHome",
+      "ssid": "DavisIot",
       "password": "CottonDog"
     },
     "mqtt": {
-      "host": "192.168.14.228",
+      "host": "192.168.12.228",
       "port": 1883,
       "auth": true,
       "username": "poolheater",
@@ -16,11 +16,5 @@
     "ota": {
       "enabled": true
     },
-    "settings": {
-      "config": "cloudy=3600;setpoint=92.0;swing=2.0;airDiff=15.0;sunMinElvAM=55.0;sunMinElvPM=22.0;poolTempIn=1;tinDiffMax=4.0",
-      "ambiant": "vcc=5.0;adcRef=5.0;serRes=120000",
-      "pool": "vcc=5.0;adcRef=5.0;serRes=9700",
-      "tin": "addr=289D6F49F67A3CF8",
-      "tout": "addr=283E4749F6C13C1A"
-    }
+    "settings": {}
   }

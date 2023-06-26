@@ -17,32 +17,61 @@ WiFiClient Telnet;
 #endif
 
 MCP3204 mcp(MCP_DIN, MCP_DOUT, MCP_CLK);
-
 char timestampStrBuf[1024];
 EasyStringStream timestampStream(timestampStrBuf, 1024);
+Oversampling adc(10, 12, 2);
+EasyButton calBtn(CAL_PIN);
 
-PSHConfig pshConfigs = {int16_t(CLOUDY_DEFAULT), float(SP_DEFAULT), float(SP_HYSTERESIS_DEFAULT), float(AIR_DIFF_DEFAULT), float(ELV_AM_DEFAULT), float(ELV_PM_DEFAULT), POOL_TEMP_IN_DEFAULT};
+/* >>> These struct values will be changed when loading the spiffs config file */
 DTSetting tinSettings = {"0000000000000000", float(0)};
 DTSetting toutSettings = {"0000000000000000", float(0)};
-
-ThermistorSettings ambiantSettings = {5.0, 5.0, 100000, 100000, 25, 4096, 3950, 5, 20};
-Thermistor ntcAmbiant(mcpReadCallback, ambiantSettings);
-
-ThermistorSettings poolSettings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
-Thermistor ntcPool(mcpReadCallback, poolSettings); // Labeled F1 in box
-
-Oversampling adc(10, 12, 2);
-
-EasyButton calBtn(CAL_PIN);
+ThermistorSettings thermistorAirSettings = {5.0, 5.0, 100000, 100000, 25, 4096, 3950, 5, 20};
+Thermistor thermistorAir(mcpReadCallback, thermistorAirSettings);
+NTCSetting ntcAirSetting = {ADC_AIR, 0.0};
+ThermistorSettings thermistorPoolSettings = {5.0, 5.0, 10000, 10000, 25, 4096, 3950, 5, 20};
+Thermistor thermistorPool(mcpReadCallback, thermistorPoolSettings); // Labeled F1 in box
+NTCSetting ntcPoolSetting = {ADC_POOL, 0.0};
+/* <<< */
 
 HomieNode statusNode("status", "Status", "string");
 HomieNode valuesNode("values", "Values", "string");
+HomieNode configNode("config", "Config", "string", false, 0, 0, configNodeInputHandler);
 
-HomieSetting<const char *> configSetting("config", "config kv");
-HomieSetting<const char *> ambiantSetting("ambiant", "ambiant kv");
-HomieSetting<const char *> tinSetting("tin", "tin json");
-HomieSetting<const char *> toutSetting("tout", "tout json");
-HomieSetting<const char *> poolSetting("pool", "pool kv");
+DynamicJsonDocument poolJsonDoc(MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE);
+
+std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolConfigSettings;
+PoolSetting<uint16_t> poolConfigCloudySetting("cloudy", "Cloudy", &poolConfigSettings);
+PoolSetting<uint16_t> poolConfigOvercastCntSetting("overcastCnt", "Overcast Count", &poolConfigSettings);
+PoolSetting<double> poolConfigSunMinElvAMSetting("sunMinElvAM", "Sun Min Elv AM", &poolConfigSettings);
+PoolSetting<double> poolConfigSunMinElvPMSetting("sunMinElvPM", "Sun Min Elv PM", &poolConfigSettings);
+PoolSetting<double> poolConfigSetPointSetting("setPoint", "Set Point", &poolConfigSettings);
+PoolSetting<double> poolConfigSetPointSwingSetting("setPointSwing", "Set Point Swing", &poolConfigSettings);
+PoolSetting<double> poolConfigAirPoolDiffSetting("airPoolDiff", "Air Pool Diff", &poolConfigSettings);
+PoolSetting<uint16_t> poolConfigPoolTempInSetting("poolTempIn", "Pool Temp Input", &poolConfigSettings); // 0 = tin 1 = ntc
+
+std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolProbeOffsetSettings;
+PoolSetting<double> poolAirOffsetSetting("air", "air offset", &poolProbeOffsetSettings);
+PoolSetting<double> poolPoolOffsetSetting("pool", "pool offset", &poolProbeOffsetSettings);
+PoolSetting<double> poolTinOffsetSetting("tin", "tin offset", &poolProbeOffsetSettings);
+PoolSetting<double> poolToutOffsetSetting("tout", "tout offset", &poolProbeOffsetSettings);
+
+std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolProbeSettings;
+PoolSetting<const char *> poolAirNtcSetting("air", "air kv", &poolProbeSettings);
+PoolSetting<const char *> poolPoolNtcSetting("pool", "pool kv", &poolProbeSettings);
+PoolSetting<const char *> poolTinDtSetting("tin", "tin kv", &poolProbeSettings);
+PoolSetting<const char *> poolToutDtSetting("tout", "tout kv", &poolProbeSettings);
+
+std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolTimeSettings;
+PoolSetting<int16_t> poolDstOffsetSetting("dstOffset", "DST Offset Hours", &poolTimeSettings);
+PoolSetting<int16_t> poolStOffsetSetting("stOffset", "ST Offset Hours", &poolTimeSettings);
+PoolSetting<uint16_t> poolDstBeginDaySetting("dstBeginDay", "DST begin day", &poolTimeSettings);
+PoolSetting<uint16_t> poolDstBeginMonthSetting("dstBeginMonth", "DST begin month", &poolTimeSettings);
+PoolSetting<uint16_t> poolDstEndDaySetting("dstEndDay", "DST end day", &poolTimeSettings);
+PoolSetting<uint16_t> poolDstEndMonthSetting("dstEndMonth", "DST end month", &poolTimeSettings);
+
+std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolLocationSettings;
+PoolSetting<double> poolLatitudeSetting("latitude", "Latitude", &poolLocationSettings);
+PoolSetting<double> poolLongitudeSetting("longitude", "Longitude", &poolLocationSettings);
 
 unsigned long currentMillis = 0;
 unsigned long intervalData = LOOP_DAT_DLY;
@@ -51,6 +80,8 @@ unsigned long intervalProc = LOOP_PROC_DLY;
 unsigned long previousMillisProc = 0;
 unsigned long intervalPub = LOOP_PUB_DLY;
 unsigned long previousMillisPub = 0;
+unsigned long intervalPubCfg = LOOP_PUB_CFG_DLY;
+unsigned long previousMillisPubCfg = 0;
 unsigned long intervalHB = LOOP_HB_DLY;
 unsigned long previousMillisHB = 0;
 unsigned long intervalDayLight = LOOP_DAYLIGHT_DLY;
@@ -71,7 +102,7 @@ bool envCheckNoTDiff = false;
 
 int telnetBuffer;
 Smoothed<int16_t> light;
-char cloudyCnt = 0;
+uint16_t cloudyCnt = 0;
 Smoothed<int> tin;
 Smoothed<int> tout;
 Smoothed<int> air;
@@ -133,10 +164,30 @@ void setup()
     statusNode.advertise("man_heat").setName("ManualHeat").setDatatype("boolean");
     statusNode.advertise("status").setName("Status").setDatatype("string");
 
+    configNode.advertise("cloudy").setName("Cloudy").setDatatype("integer").setUnit("").settable();
+    configNode.advertise("overcastCnt").setName("Overcast Cnt").setDatatype("integer").setUnit("").settable();
+    configNode.advertise("sunMinElvAM").setName("Sun Min Elv AM").setDatatype("float").setUnit("°").settable();
+    configNode.advertise("sunMinElvPM").setName("Sun Min Elv PM").setDatatype("float").setUnit("°").settable();
+    configNode.advertise("setPoint").setName("Set Point").setDatatype("float").setUnit("F").settable();
+    configNode.advertise("setPointSwing").setName("Set Point Swing").setDatatype("float").setUnit("F").settable();
+    configNode.advertise("airPoolDiff").setName("Air Pool Diff").setDatatype("float").setUnit("F").settable();
+    configNode.advertise("poolTempIn").setName("Pool Temp In").setDatatype("integer").setUnit("").settable();
+    configNode.advertise("airOffset").setName("Air Offset").setDatatype("float").setUnit("F").settable();
+    configNode.advertise("poolOffset").setName("Pool Offset").setDatatype("float").setUnit("F").settable();
+    configNode.advertise("tinOffset").setName("TIN Offset").setDatatype("float").setUnit("F").settable();
+    configNode.advertise("toutOffset").setName("TOUT Offset").setDatatype("float").setUnit("F").settable();
+
 #ifdef LOG_TO_TELNET
     Homie.setLoggingPrinter(&Telnet);
     Homie.onEvent(onHomieEvent);
 #endif
+
+    if (!configLoad()) {
+        Homie.getLogger() << F("Pool configuration invalid.") << endl;
+        delay(5000);
+        ESP.restart();
+    }
+    configUpdateStructs();
 
     Homie.setup();
 }
@@ -166,37 +217,34 @@ void setupHandler()
     setSyncInterval(600);
     yield();
 
-    parsePSHSettings(&pshConfigs, configSetting.get(), "Config");
-
-    parseDTSettings(&tinSettings, tinSetting.get(), "Tin");
+    parseDTSettings(&tinSettings, poolTinDtSetting.get(), poolTinOffsetSetting.get(), "Tin");
     strToAddress(tinSettings.addr, tempSensorIn);
-    parseDTSettings(&toutSettings, toutSetting.get(), "Tout");
+
+    parseDTSettings(&toutSettings, poolToutDtSetting.get(), poolToutOffsetSetting.get(), "Tout");
     strToAddress(toutSettings.addr, tempSensorOut);
     yield();
 
-    parseNTCSettings(ambiantSetting.get(), "Ambiant", &ambiantSettings);
-    ntcAmbiant.setSeriesResistor(&ambiantSettings.seriesResistor);
-    ntcAmbiant.setThermistorNominal(&ambiantSettings.thermistorNominal);
-    ntcAmbiant.setBCoef(&ambiantSettings.bCoef);
-    ntcAmbiant.setTemperatureNominal(&ambiantSettings.temperatureNominal);
-    ntcAmbiant.setVcc(&ambiantSettings.vcc);
-    ntcAmbiant.setAnalogReference(&ambiantSettings.analogReference);
-    Homie.getLogger() << "Ambiant settings = " << ntcAmbiant.dumpSettings() << endl;
+    parseNTCSettings(&thermistorAirSettings, poolAirNtcSetting.get(), "Air");
+    thermistorAir.setSeriesResistor(&thermistorAirSettings.seriesResistor);
+    thermistorAir.setThermistorNominal(&thermistorAirSettings.thermistorNominal);
+    thermistorAir.setBCoef(&thermistorAirSettings.bCoef);
+    thermistorAir.setTemperatureNominal(&thermistorAirSettings.temperatureNominal);
+    thermistorAir.setVcc(&thermistorAirSettings.vcc);
+    thermistorAir.setAnalogReference(&thermistorAirSettings.analogReference);
+    Homie.getLogger() << "Air settings = " << thermistorAir.dumpSettings() << endl;
     yield();
 
-    parseNTCSettings(poolSetting.get(), "Pool", &poolSettings);
-    ntcPool.setSeriesResistor(&poolSettings.seriesResistor);
-    ntcPool.setThermistorNominal(&poolSettings.thermistorNominal);
-    ntcPool.setBCoef(&poolSettings.bCoef);
-    ntcPool.setTemperatureNominal(&poolSettings.temperatureNominal);
-    ntcPool.setVcc(&poolSettings.vcc);
-    ntcPool.setAnalogReference(&poolSettings.analogReference);
-    Homie.getLogger() << "Pool settings = " << ntcPool.dumpSettings() << endl;
+    parseNTCSettings(&thermistorPoolSettings, poolPoolNtcSetting.get(), "Pool");
+    thermistorPool.setSeriesResistor(&thermistorPoolSettings.seriesResistor);
+    thermistorPool.setThermistorNominal(&thermistorPoolSettings.thermistorNominal);
+    thermistorPool.setBCoef(&thermistorPoolSettings.bCoef);
+    thermistorPool.setTemperatureNominal(&thermistorPoolSettings.temperatureNominal);
+    thermistorPool.setVcc(&thermistorPoolSettings.vcc);
+    thermistorPool.setAnalogReference(&thermistorPoolSettings.analogReference);
+    Homie.getLogger() << "Pool settings = " << thermistorPool.dumpSettings() << endl;
     yield();
 
     setupOwSensors();
-
-    readConfig();
 
     calBtn.begin();
     calBtn.onPressedFor(2000, calibratePoolTemps);
@@ -235,7 +283,7 @@ void loopHandler()
         Homie.getLogger() << "Tout = " << ItoF(tout.getLast()) << " °F  Tout Smooth = " << ItoF(tout.get()) << " °F " << endl;
         yield();
 
-        air.add(FtoI( float(ntcAmbiant.readTempF(ADC_AMBIANT))));
+        addAirTemp();
         Homie.getLogger() << "Air = " << ItoF(air.getLast()) << " °F  Air Smooth = " << ItoF(air.get()) << " °F" << endl;
         yield();
 
@@ -244,10 +292,10 @@ void loopHandler()
         yield();
 
         light.add(mcp.analogRead(ADC_LIGHT));
-        if (light.get() <= pshConfigs.cloudy) {
+        if (light.get() <= poolConfigCloudySetting.get()) {
             isCloudy = true;
             cloudyCnt++;
-            if(cloudyCnt >= OVERCAST_CNT){
+            if(cloudyCnt >= poolConfigOvercastCntSetting.get()){
                 isOvercast = true;
             }
         } else {
@@ -257,7 +305,7 @@ void loopHandler()
         }
 
         if(isOvercast){
-            cloudyCnt = OVERCAST_CNT;
+            cloudyCnt = poolConfigOvercastCntSetting.get();
         }
 
         Homie.getLogger() << "Light level = " << light.getLast() << " Light smoothed = " << light.get() << " Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << endl;
@@ -291,6 +339,7 @@ void loopHandler()
     // Publish data
     if (currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
         Homie.getLogger() << "PUBLISH:" << endl;
+        delay(100); //This is needed to allow time to publish
         statusNode.setProperty("timestamp").send(getTimestamp(true));
         statusNode.setProperty("heating").send(isHeating ? "true" : "false");
         statusNode.setProperty("at_setpoint").send(atSetpoint ? "true" : "false");
@@ -299,7 +348,9 @@ void loopHandler()
         statusNode.setProperty("env_override").send(overrideEnv ? "true" : "false");
         statusNode.setProperty("man_heat").send(manualHeating ? "true" : "false");
         statusNode.setProperty("status").send(status.get());
+        yield();
 
+        delay(100); //This is needed to allow time to publish
         valuesNode.setProperty("tin").send(ItoS(tin.get()));
         valuesNode.setProperty("tout").send(ItoS(tout.get()));
         valuesNode.setProperty("air").send(ItoS(air.get()));
@@ -307,10 +358,36 @@ void loopHandler()
         valuesNode.setProperty("light").send(String(light.get()));
         valuesNode.setProperty("azimuth").send(String(solar.azimuth));
         valuesNode.setProperty("elevation").send(String(solar.elevation));
+        yield();
 
         Homie.getLogger() << "Published data" << endl;
         Homie.getLogger() << endl;
         previousMillisPub = currentMillis;
+    }
+    yield();
+    calBtn.update();
+
+    // Publish Config
+    if (currentMillis - previousMillisPubCfg > intervalPubCfg || previousMillisPubCfg == 0) {
+        Homie.getLogger() << "PUBLISH CONFIG:" << endl;
+        delay(100); //This is needed to allow time to publish
+
+        configNode.setProperty("cloudy").send(String(poolConfigCloudySetting.get()));
+        configNode.setProperty("overcastCnt").send(String(poolConfigOvercastCntSetting.get()));
+        configNode.setProperty("sunMinElvAM").send(String(poolConfigSunMinElvAMSetting.get()));
+        configNode.setProperty("sunMinElvPM").send(String(poolConfigSunMinElvPMSetting.get()));
+        configNode.setProperty("setPoint").send(String(poolConfigSetPointSetting.get()));
+        configNode.setProperty("setPointSwing").send(String(poolConfigSetPointSwingSetting.get()));
+        configNode.setProperty("airPoolDiff").send(String(poolConfigAirPoolDiffSetting.get()));
+        configNode.setProperty("poolTempIn").send(String(poolConfigPoolTempInSetting.get()));
+        configNode.setProperty("airOffset").send(String(poolAirOffsetSetting.get()));
+        configNode.setProperty("poolOffset").send(String(poolPoolOffsetSetting.get()));
+        configNode.setProperty("tinOffset").send(String(poolTinOffsetSetting.get()));
+        configNode.setProperty("toutOffset").send(String(poolToutOffsetSetting.get()));
+
+        Homie.getLogger() << "Published config" << endl;
+        Homie.getLogger() << endl;
+        previousMillisPubCfg = currentMillis;
     }
     yield();
     calBtn.update();
@@ -445,9 +522,37 @@ void onHomieEvent(const HomieEvent& event)
 }
 #endif
 
+bool configLoad()
+{
+    configRead();
+    JsonObject parsedJson = poolJsonDoc.as<JsonObject>();
+
+    PoolInternals::ConfigValidationResult configValidationResult = PoolInternals::Validation::validateConfig(parsedJson);
+    if (!configValidationResult.valid) {
+        Homie.getLogger() << F("✖ Pool config file is not valid, reason: ") << configValidationResult.reason << endl;
+
+        return false;
+    }
+
+    configSetPoolSettings(parsedJson["config"].as<JsonObject>(), &poolConfigSettings);
+    configSetPoolSettings(parsedJson["probeOffsets"].as<JsonObject>(), &poolProbeOffsetSettings);
+    configSetPoolSettings(parsedJson["probeSettings"].as<JsonObject>(), &poolProbeSettings);
+    configSetPoolSettings(parsedJson["time"].as<JsonObject>(), &poolTimeSettings);
+    configSetPoolSettings(parsedJson["location"].as<JsonObject>(), &poolLocationSettings);
+
+    Homie.getLogger() << endl << F("{} Stored Pool configuration") << endl;
+    configLogSettings("Config", &poolConfigSettings);
+    configLogSettings("Probe Offsets", &poolProbeOffsetSettings);
+    configLogSettings("Probe Settings", &poolProbeSettings);
+    configLogSettings("Time", &poolTimeSettings);
+    configLogSettings("Location", &poolLocationSettings);
+
+    return true;
+}
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-void readConfig()
+void configRead()
 {
     if(!SPIFFS.begin()){
         Homie.getLogger() << F("✖ Failed to initialize SPIFFS for pool config read") << endl;
@@ -475,36 +580,133 @@ void readConfig()
 
     char buf[HomieInternals::MAX_JSON_CONFIG_FILE_SIZE];
     configFile.readBytes(buf, configSize);
+#ifdef PRINT_POOL_CONFIG_ON_READ_WRITE
+    configFile.seek(0);
+    Homie.getLogger() << F("Read Pool Config File Content >>>") << endl;
+    while(configFile.available()){
+        Homie.getLogger().write(configFile.read());
+    }
+    Homie.getLogger() << "<<<" << endl;
+#endif
     configFile.close();
     buf[configSize] = '\0';
 
-    StaticJsonDocument<HomieInternals::MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE> jsonDoc;
-    if (deserializeJson(jsonDoc, buf) != DeserializationError::Ok || !jsonDoc.is<JsonObject>()) {
+
+    poolJsonDoc.clear();
+    if (deserializeJson(poolJsonDoc, buf) != DeserializationError::Ok || !poolJsonDoc.is<JsonObject>()) {
         Homie.getLogger() << F("✖ Invalid JSON in the pool config file") << endl;
         return;
     }
+}
+#pragma clang diagnostic pop
 
-    JsonObject parsedJson = jsonDoc.as<JsonObject>();
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "modernize-use-auto"
+#pragma ide diagnostic ignored "cppcoreguidelines-pro-type-static-cast-downcast"
+void configSetPoolSettings(JsonObject settingsObject, std::vector<PoolInternals::IPoolSetting*> * settings)
+{
+    for (auto &iSetting : *settings) {
+        JsonVariant reqSetting = settingsObject[iSetting->getName()];
 
-    tinSettings.offset = parsedJson["tinOffset"].as<float>();
-    toutSettings.offset = parsedJson["toutOffset"].as<float>();
+        if (!reqSetting.isNull()) {
+            if (iSetting->isBool()) {
+                PoolSetting<bool>* setting = static_cast<PoolSetting<bool>*>(iSetting);
+                setting->set(reqSetting.as<bool>());
+            } else if (iSetting->isLong()) {
+                PoolSetting<long>* setting = static_cast<PoolSetting<long>*>(iSetting);
+                setting->set(reqSetting.as<long>());
+            } else if (iSetting->isShort()) {
+                PoolSetting<int16_t>* setting = static_cast<PoolSetting<int16_t>*>(iSetting);
+                setting->set(reqSetting.as<int16_t>());
+            } else if (iSetting->isUShort()) {
+                PoolSetting<uint16_t>* setting = static_cast<PoolSetting<uint16_t>*>(iSetting);
+                setting->set(reqSetting.as<uint16_t>());
+            } else if (iSetting->isDouble()) {
+                PoolSetting<double>* setting = static_cast<PoolSetting<double>*>(iSetting);
+                setting->set(reqSetting.as<double>());
+            } else if (iSetting->isConstChar()) {
+                PoolSetting<const char*>* setting = static_cast<PoolSetting<const char*>*>(iSetting);
+                setting->set(strdup(reqSetting.as<const char*>()));
+            }
+        }
+    }
+}
+#pragma clang diagnostic pop
 
-    Homie.getLogger() << endl << F("{} Stored Pool configuration") << endl;
-    Homie.getLogger() << F("  • TIN Offset: ") << tinSettings.offset << endl;
-    Homie.getLogger() << F("  • TOUT Offset: ") << toutSettings.offset << endl;
-    Homie.getLogger() << endl;
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "modernize-use-auto"
+#pragma ide diagnostic ignored "cppcoreguidelines-pro-type-static-cast-downcast"
+void configLogSettings(const char * name, std::vector<PoolInternals::IPoolSetting*> * settings)
+{
+    if (!settings->empty()) {
+        Homie.getLogger() << F("  • ") << name << F(" settings: ") << endl;
+        for (auto &iSetting : *settings) {
+            Homie.getLogger() << F("    ◦ ");
+            if (iSetting->isBool()) {
+                PoolSetting<bool>* setting = static_cast<PoolSetting<bool>*>(iSetting);
+                Homie.getLogger() << setting->getDescription() << F(": ") << setting->get() << F(" (") << (setting->wasProvided() ? F("set") : F("default")) << F(")");
+            } else if (iSetting->isLong()) {
+                PoolSetting<long>* setting = static_cast<PoolSetting<long>*>(iSetting);
+                Homie.getLogger() << setting->getDescription() << F(": ") << setting->get() << F(" (") << (setting->wasProvided() ? F("set") : F("default")) << F(")");
+            } else if (iSetting->isShort()) {
+                PoolSetting<int16_t>* setting = static_cast<PoolSetting<int16_t>*>(iSetting);
+                Homie.getLogger() << setting->getDescription() << F(": ") << setting->get() << F(" (") << (setting->wasProvided() ? F("set") : F("default")) << F(")");
+            } else if (iSetting->isUShort()) {
+                PoolSetting<uint16_t>* setting = static_cast<PoolSetting<uint16_t>*>(iSetting);
+                Homie.getLogger() << setting->getDescription() << F(": ") << setting->get() << F(" (") << (setting->wasProvided() ? F("set") : F("default")) << F(")");
+            } else if (iSetting->isDouble()) {
+                PoolSetting<double>* setting = static_cast<PoolSetting<double>*>(iSetting);
+                Homie.getLogger() << setting->getDescription() << F(": ") << setting->get() << F(" (") << (setting->wasProvided() ? F("set") : F("default")) << F(")");
+            } else if (iSetting->isConstChar()) {
+                PoolSetting<const char*>* setting = static_cast<PoolSetting<const char*>*>(iSetting);
+                Homie.getLogger() << setting->getDescription() << F(": ") << setting->get() << F(" (") << (setting->wasProvided() ? F("set") : F("default")) << F(")");
+            }
 
+            Homie.getLogger() << endl;
+        }
+    }
 }
 #pragma clang diagnostic pop
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-void writeConfig()
+void configWrite()
 {
-    if(!SPIFFS.begin()){
-        Homie.getLogger() << F("✖ Failed to initialize SPIFFS for pool config write") << endl;
-        return;
-    }
+    poolJsonDoc.clear();
+
+    JsonObject config = poolJsonDoc.createNestedObject("config");
+    config["cloudy"] = poolConfigCloudySetting.get();
+    config["overcastCnt"] = poolConfigOvercastCntSetting.get();
+    config["sunMinElvAM"] = poolConfigSunMinElvAMSetting.get();
+    config["sunMinElvPM"] = poolConfigSunMinElvPMSetting.get();
+    config["setPoint"] = poolConfigSetPointSetting.get();
+    config["setPointSwing"] = poolConfigSetPointSwingSetting.get();
+    config["airPoolDiff"] = poolConfigAirPoolDiffSetting.get();
+    config["poolTempIn"] = poolConfigPoolTempInSetting.get();
+
+    JsonObject probeOffsets = poolJsonDoc.createNestedObject("probeOffsets");
+    probeOffsets["air"] = poolAirOffsetSetting.get();
+    probeOffsets["pool"] = poolPoolOffsetSetting.get();
+    probeOffsets["tin"] = poolTinOffsetSetting.get();
+    probeOffsets["tout"] = poolToutOffsetSetting.get();
+
+    JsonObject probeSettings = poolJsonDoc.createNestedObject("probeSettings");
+    probeSettings["air"] = poolAirNtcSetting.get();
+    probeSettings["pool"] = poolPoolNtcSetting.get();
+    probeSettings["tin"] = poolTinDtSetting.get();
+    probeSettings["tout"] = poolToutDtSetting.get();
+
+    JsonObject time = poolJsonDoc.createNestedObject("time");
+    time["dstOffset"] = poolDstOffsetSetting.get();
+    time["stOffset"] = poolStOffsetSetting.get();
+    time["dstBeginDay"] = poolDstBeginDaySetting.get();
+    time["dstBeginMonth"] = poolDstBeginMonthSetting.get();
+    time["dstEndDay"] = poolDstEndDaySetting.get();
+    time["dstEndMonth"] = poolDstEndMonthSetting.get();
+
+    JsonObject location = poolJsonDoc.createNestedObject("location");
+    location["latitude"] = poolLatitudeSetting.get();
+    location["longitude"] = poolLongitudeSetting.get();
 
     SPIFFS.remove(CONFIG_PATH);
 
@@ -514,16 +716,28 @@ void writeConfig()
         return;
     }
 
-    StaticJsonDocument<HomieInternals::MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE> jsonDoc;
-    jsonDoc["tinOffset"] = tinSettings.offset;
-    jsonDoc["toutOffset"] = toutSettings.offset;
+#ifdef PRINT_POOL_CONFIG_ON_READ_WRITE
+    Homie.getLogger() << endl << F("{} New Stored Pool configuration") << endl;
+    serializeJsonPretty(poolJsonDoc, Serial);
+    Homie.getLogger() << endl;
+#endif
 
-    serializeJson(jsonDoc, configFile);
+    serializeJsonPretty(poolJsonDoc, configFile);
     configFile.close();
+
+    configUpdateStructs();
 
     Homie.getLogger() << F("✔ Pool config file written") << endl << endl;
 }
 #pragma clang diagnostic pop
+
+void configUpdateStructs()
+{
+    ntcAirSetting.offset = float(poolAirOffsetSetting.get());
+    ntcPoolSetting.offset = float(poolPoolOffsetSetting.get());
+    tinSettings.offset = float(poolTinOffsetSetting.get());
+    toutSettings.offset = float(poolToutOffsetSetting.get());
+}
 
 time_t getNtpTime() 
 {
@@ -539,42 +753,42 @@ time_t getNtpTime()
 
 int getTimeOffset(const time_t * t, bool asHours)
 {
-    if(month(*t) == DST_BEGIN_MONTH && day(*t) >= DST_BEGIN_DAY){
+    if(month(*t) == poolDstBeginMonthSetting.get() && day(*t) >= poolDstBeginDaySetting.get()){
         if(asHours) {
-            return TIME_OFFSET_DST_HOURS;
+            return poolDstOffsetSetting.get();
         }else{
-            return TIME_OFFSET_DST_HOURS * 60 * 60;
+            return poolDstOffsetSetting.get() * 60 * 60;
         }
     }
 
-    if(month(*t) == DST_END_MONTH && day(*t) <= DST_END_DAY){
+    if(month(*t) == poolDstEndMonthSetting.get() && day(*t) <= poolDstEndDaySetting.get()){
         if(asHours) {
-            return TIME_OFFSET_ST_HOURS;
+            return poolStOffsetSetting.get();
         }else{
-            return TIME_OFFSET_ST_HOURS * 60 * 60;
+            return poolStOffsetSetting.get() * 60 * 60;
         }
     }
 
-    if(month(*t) > DST_BEGIN_MONTH && month(*t) < DST_END_MONTH){
+    if(month(*t) > poolDstBeginMonthSetting.get() && month(*t) < poolDstEndMonthSetting.get()){
         if(asHours) {
-            return TIME_OFFSET_DST_HOURS;
+            return poolDstOffsetSetting.get();
         }else{
-            return TIME_OFFSET_DST_HOURS * 60 * 60;
+            return poolDstOffsetSetting.get() * 60 * 60;
         }
     }
 
-    if(month(*t) > DST_END_MONTH){
+    if(month(*t) > poolDstEndMonthSetting.get()){
         if(asHours) {
-            return TIME_OFFSET_ST_HOURS;
+            return poolStOffsetSetting.get();
         }else{
-            return TIME_OFFSET_ST_HOURS * 60 * 60;
+            return poolStOffsetSetting.get() * 60 * 60;
         }
     }
 
     if(asHours) {
-        return TIME_OFFSET_DST_HOURS;
+        return poolDstOffsetSetting.get();
     }else{
-        return TIME_OFFSET_DST_HOURS * 60 * 60;
+        return poolDstOffsetSetting.get() * 60 * 60;
     }
 }
 
@@ -733,7 +947,7 @@ int16_t mcpReadCallback(uint8_t channel)
     return mcp.analogRead(channel);
 }
 
-void parseNTCSettings(const char * settings, const char * name, ThermistorSettings * ts)
+void parseNTCSettings(ThermistorSettings * ts, const char * settings, const char * name)
 {
     sscanf(settings, "vcc=%lf;adcRef=%lf;serRes=%lf", // NOLINT(cert-err34-c)
            &ts->vcc, &ts->analogReference, &ts->seriesResistor
@@ -746,29 +960,12 @@ void parseNTCSettings(const char * settings, const char * name, ThermistorSettin
     Homie.getLogger() << endl;
 }
 
-void parsePSHSettings(PSHConfig * pPSHConfig, const char * settings, const char * name)
-{
-    sscanf(settings, "cloudy=%hi;setpoint=%f;swing=%f;airDiff=%f;sunMinElvAM=%f;sunMinElvPM=%f;poolTempIn=%hi;tinDiffMax=%f", // NOLINT(cert-err34-c)
-           &pPSHConfig->cloudy, &pPSHConfig->setpoint, &pPSHConfig->swing, &pPSHConfig->airDiff, &pPSHConfig->elevationMinAM, &pPSHConfig->elevationMinPM, &pPSHConfig->poolTempIn, &pPSHConfig->tinDiffMax
-    );
-
-    Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
-    Homie.getLogger() << "Cloudy = " << pPSHConfig->cloudy << endl;
-    Homie.getLogger() << "Setpoint = " << pPSHConfig->setpoint << endl;
-    Homie.getLogger() << "Swing = " << pPSHConfig->swing << endl;
-    Homie.getLogger() << "Min Air->Water Diff = " << pPSHConfig->airDiff << endl;
-    Homie.getLogger() << "Min Sun Elevation AM = " << pPSHConfig->elevationMinAM << endl;
-    Homie.getLogger() << "Min Sun Elevation PM = " << pPSHConfig->elevationMinPM << endl;
-    Homie.getLogger() << "Pool Temp In = " << pPSHConfig->poolTempIn << endl;
-    Homie.getLogger() << "TIN -> TOUT Diff Max = " << pPSHConfig->tinDiffMax << endl;
-    Homie.getLogger() << endl;
-}
-
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat"
-void parseDTSettings(DTSetting * pDTSetting, const char * settings, const char * name)
+void parseDTSettings(DTSetting * pDTSetting, const char * settings, double offset, const char * name)
 {
     sscanf(settings, "addr=%[0-9a-fA-F]", &pDTSetting->addr); // NOLINT(cert-err34-c)
+    pDTSetting->offset = float(offset);
 
     Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
     Homie.getLogger() << "Address = " << pDTSetting->addr << endl;
@@ -885,7 +1082,7 @@ void getSolar(Solar * pSolar)
 {
     time_t utc = now();
     // Calculate the solar position, in degrees
-    calcHorizontalCoordinates(utc, LATITUDE, LONGITUDE, pSolar->azimuth, pSolar->elevation);
+    calcHorizontalCoordinates(utc, poolLatitudeSetting.get(), poolLongitudeSetting.get(), pSolar->azimuth, pSolar->elevation);
 
     // // Print results
 //#ifdef DEBUG
@@ -903,7 +1100,7 @@ void getDaylight(Daylight * pDaylight)
 {
     double md;
     time_t utc = now();
-    calcCivilDawnDusk(utc, LATITUDE, LONGITUDE, pDaylight->transit, pDaylight->sunrise, pDaylight->sunset);
+    calcCivilDawnDusk(utc, poolLatitudeSetting.get(), poolLongitudeSetting.get(), pDaylight->transit, pDaylight->sunrise, pDaylight->sunset);
     md = ((pDaylight->sunset - pDaylight->sunrise) / 2) + pDaylight->sunrise;
 
     tmElements_t tm;
@@ -936,14 +1133,14 @@ void doProcess()
         return;
     }
 
-    if(ItoF(pool.get()) >= pshConfigs.setpoint) {
+    if(ItoF(pool.get()) >= poolConfigSetPointSetting.get()) {
         Homie.getLogger() << "Set point reached" << endl;
         turnHeatOff();
         atSetpoint = true;
         return;
     }
 
-    if(ItoF(pool.get()) < (pshConfigs.setpoint - pshConfigs.swing)){
+    if(ItoF(pool.get()) < (poolConfigSetPointSetting.get() - poolConfigSetPointSwingSetting.get())){
         atSetpoint = false;
     }
 
@@ -991,13 +1188,13 @@ bool envAllowHeat()
 #ifndef NO_ENV_SOLAR_CHECK
     if(!envCheckNoSolar) {
         time_t t = now();
-        if (t < daylight.midday && solar.elevation <= pshConfigs.elevationMinAM) {
-            Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below morning minimum " << pshConfigs.elevationMinAM << "°" << endl;
+        if (t < daylight.midday && solar.elevation <= poolConfigSunMinElvAMSetting.get()) {
+            Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below morning minimum " << poolConfigSunMinElvAMSetting.get() << "°" << endl;
             status << "ENV: Below AM Elv\n";
             rtn = false;
         }
-        if (t >= daylight.midday && solar.elevation <= pshConfigs.elevationMinPM) {
-            Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below evening minimum " << pshConfigs.elevationMinPM << "°" << endl;
+        if (t >= daylight.midday && solar.elevation <= poolConfigSunMinElvPMSetting.get()) {
+            Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below evening minimum " << poolConfigSunMinElvPMSetting.get() << "°" << endl;
             status << "ENV: Below PM Elv\n";
             rtn = false;
         }
@@ -1007,11 +1204,10 @@ bool envAllowHeat()
 #else
     Homie.getLogger() << "Env: Skip solar check by define" << endl;
 #endif
-    // todo-evo: Need to store set point and cloudy and air diff and solar elevations in flash and allow change from mqtt
-    // todo-evo: Cloudy should be 3700 or less and overcast count should be increased
+
 #ifndef NO_ENV_CLOUD_CHECK
     if(!envCheckNoCloud) {
-        if (isOvercast && ItoF(air.get()) < pshConfigs.setpoint) {
+        if (isOvercast && ItoF(air.get()) < poolConfigSetPointSetting.get()) {
             Homie.getLogger() << "Env: Overcast and too cool outside" << endl;
             status << "ENV: Overcast and Cold\n";
             rtn = false;
@@ -1025,8 +1221,8 @@ bool envAllowHeat()
 
 #ifndef NO_ENV_AIR_CHECK
     if(!envCheckNoAir) {
-        if (ItoF(air.get()) < pshConfigs.setpoint) {
-            if ((ItoF(air.get()) + pshConfigs.airDiff) < ItoF(tin.get())) {
+        if (ItoF(air.get()) < poolConfigSetPointSetting.get()) {
+            if ((ItoF(air.get()) + poolConfigAirPoolDiffSetting.get()) < ItoF(tin.get())) {
                 Homie.getLogger() << "Env: Temp in to air not enough diff" << endl;
                 status << "ENV: TIN -> Air diff to small\n";
                 rtn = false;
@@ -1040,19 +1236,23 @@ bool envAllowHeat()
 #endif
 
     // todo-evo: This needs fixed tin and tout can only be check while running
-#ifndef NO_ENV_IN_OUT_DIFF_CHECK
-    if(!envCheckNoTDiff) {
-        if (ItoF(tout.get()) < (ItoF(tin.get()) - pshConfigs.tinDiffMax)) {
-            Homie.getLogger() << "Env: Temp out less than temp in" << endl;
-            status << "ENV: TOUT < TIN\n";
-            rtn = false;
-        }
-    }else {
-        Homie.getLogger() << "Env: Skip tin to tout diff check" << endl;
+//#ifndef NO_ENV_IN_OUT_DIFF_CHECK
+//    if(!envCheckNoTDiff) {
+//        if (ItoF(tout.get()) < (ItoF(tin.get()) - pshConfigs.tinDiffMax)) {
+//            Homie.getLogger() << "Env: Temp out less than temp in" << endl;
+//            status << "ENV: TOUT < TIN\n";
+//            rtn = false;
+//        }
+//    }else {
+//        Homie.getLogger() << "Env: Skip tin to tout diff check" << endl;
+//    }
+//#else
+//    Homie.getLogger() << "Env: Skip tin to tout diff check by define" << endl;
+//#endif
+    if(status.getLength() == 0) {
+        status << "ok";
     }
-#else
-    Homie.getLogger() << "Env: Skip tin to tout diff check by define" << endl;
-#endif
+
     return rtn;
 }
 
@@ -1087,31 +1287,31 @@ void calibratePoolTemps()
 
     digitalWrite(LED_BUILTIN_AUX, LOW);
 
-    if(pshConfigs.poolTempIn == 0) {
+    if(poolConfigPoolTempInSetting.get() == 0) {
         toutSettings.offset = ItoF(tin.get()) - ItoF(tout.get());
-    } else if(pshConfigs.poolTempIn == 1) {
+    } else if(poolConfigPoolTempInSetting.get() == 1) {
         tinSettings.offset = ItoF(pool.get()) - ItoF(tin.get());
         toutSettings.offset = ItoF(pool.get()) - ItoF(tout.get());
     }else{
-        Homie.getLogger() << F("✖ Invalid poolTemp type: ") << pshConfigs.poolTempIn << endl;
+        Homie.getLogger() << F("✖ Invalid poolTemp type: ") << poolConfigPoolTempInSetting.get() << endl;
     }
 
     Homie.getLogger() << "Offsets: tin = " << tinSettings.offset << " °F  tout = " << toutSettings.offset << " °F" << endl;
 
-    writeConfig();
+    configWrite();
 
-    Homie.getLogger() << "Calibration Completed!" << endl;
+    Homie.getLogger() << F("✔ Calibration Completed!") << endl;
     digitalWrite(LED_BUILTIN_AUX, HIGH);
 
 }
 
 void calibrationReset()
 {
-    Homie.getLogger() << "Calibration Reset!" << endl;
+    Homie.getLogger() << F("✔ Calibration Reset!") << endl;
     digitalWrite(LED_BUILTIN_AUX, LOW);
     tinSettings.offset = float(0);
     toutSettings.offset = float(0);
-    writeConfig();
+    configWrite();
     delay(500);
     digitalWrite(LED_BUILTIN_AUX, HIGH);
 }
@@ -1133,15 +1333,22 @@ int FtoI(const float val)
 
 void addPoolTemp()
 {
-    if(pshConfigs.poolTempIn == 0) {
+    if(poolConfigPoolTempInSetting.get() == 0) {
         pool.add(tin.getLast());
-    } else if(pshConfigs.poolTempIn == 1) {
-        pool.add(FtoI(float(ntcPool.readTempF(ADC_POOL))));
+    } else if(poolConfigPoolTempInSetting.get() == 1) {
+        pool.add(FtoI(float(thermistorPool.readTempF(ntcPoolSetting.pin)) + ntcPoolSetting.offset));
     }else{
-        Homie.getLogger() << F("✖ Invalid poolTemp type: ") << pshConfigs.poolTempIn << endl;
+        Homie.getLogger() << F("✖ Invalid poolTemp type: ") << poolConfigPoolTempInSetting.get() << endl;
     }
 }
 
+void addAirTemp()
+{
+    air.add(FtoI(float(thermistorAir.readTempF(ntcAirSetting.pin)) + ntcAirSetting.offset));
+}
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "UnusedParameter"
 bool mqttHeatOnHandler(const HomieRange& range, const String& value)
 {
     if (value != "true" && value != "false") return false;
@@ -1163,3 +1370,169 @@ bool mqttHeatOnHandler(const HomieRange& range, const String& value)
 
     return true;
 }
+#pragma clang diagnostic pop
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "UnusedParameter"
+bool configNodeInputHandler(const HomieRange& range, const String& property, const String& value)
+{
+    Homie.getLogger() << "Config Node Input >> Property: " << property << " Value: " << value << endl;
+
+    char *end = nullptr;
+    uint16_t tempUint16;
+    float tempFloat;
+    bool doWrite = false;
+
+    if (strcmp(property.c_str(), "cloudy") == 0) {
+        tempUint16 = strtoul(value.c_str(), &end, 10);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigCloudySetting.set(tempUint16);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "overcastCnt") == 0) {
+        tempUint16 = strtoul(value.c_str(), &end, 10);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigOvercastCntSetting.set(tempUint16);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "sunMinElvAM") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigSunMinElvAMSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "sunMinElvPM") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigSunMinElvPMSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "setPoint") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigSetPointSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "setPointSwing") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigSetPointSwingSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "airPoolDiff") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigAirPoolDiffSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "poolTempIn") == 0) {
+        tempUint16 = strtoul(value.c_str(), &end, 10);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolConfigPoolTempInSetting.set(tempUint16);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "airOffset") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolAirOffsetSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "poolOffset") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolPoolOffsetSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "tinOffset") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolTinOffsetSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+    else if (strcmp(property.c_str(), "toutOffset") == 0) {
+        tempFloat = strtof(value.c_str(), &end);
+
+        if(end == value.c_str()){
+            Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
+            return false;
+        }
+
+        poolToutOffsetSetting.set(tempFloat);
+        doWrite = true;
+        Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
+    }
+
+    if (doWrite) {
+        configWrite();
+        previousMillisPubCfg = 0;
+    }
+
+    return true;
+}
+#pragma clang diagnostic pop
