@@ -7,7 +7,8 @@
     "setPoint": 92.0,
     "setPointSwing": 2.0,
     "airPoolDiff": 10.0,
-    "poolTempIn": 1
+    "poolTempIn": 1,
+    "pumpGpm": 25.0
   },
   "probeOffsets": {
     "air": 0.0,

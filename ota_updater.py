@@ -6,7 +6,7 @@ import base64, sys, math
 from hashlib import md5
 
 # Global variable for total bytes to transfer
-total = 1
+total = 0
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -27,7 +27,7 @@ def on_progress(progress, total):
     g_total = total
     bar_width = 30
     bar = int(bar_width*(progress/total))
-    print("\r[", '+'*bar, ' '*(bar_width-bar), "] ", progress, "/", total, end='', sep='')
+    print("\r[", '+'*bar, ' '*(bar_width-bar), "] ", progress, end='', sep='')
     if (progress == total):
         print()
     sys.stdout.flush()
@@ -88,7 +88,7 @@ def on_message(client, userdata, msg):
             client.disconnect()
 
     elif msg.topic.endswith('$state') or msg.topic.endswith('$online'):
-        if (msg.topic.endswith('$state') and msg.payload != 'ready') or (msg.topic.endswith('$online') and msg.payload == 'false'): 
+        if (msg.topic.endswith('$state') and msg.payload != 'ready') or (msg.topic.endswith('$online') and msg.payload == 'false'):
             return
 
         # calcluate firmware md5
@@ -105,7 +105,7 @@ def on_message(client, userdata, msg):
         print("Waiting for device info...")
 
     if ( not userdata.get("published") ) and ( userdata.get('ota_enabled') ) and \
-       ( 'old_md5' in userdata.keys() ) and ( userdata.get('md5') != userdata.get('old_md5') ):
+            ( 'old_md5' in userdata.keys() ) and ( userdata.get('md5') != userdata.get('old_md5') ):
         # push the firmware binary
         userdata.update({"published": True})
         topic = "{base_topic}{device_id}/$implementation/ota/firmware/{md5}".format(**userdata)
@@ -130,10 +130,10 @@ def main(broker_host, broker_port, broker_username, broker_password, broker_ca_c
 
     # save data to be used in the callbacks
     client.user_data_set({
-            "base_topic": base_topic,
-            "device_id": device_id,
-            "firmware": firmware
-        })
+        "base_topic": base_topic,
+        "device_id": device_id,
+        "firmware": firmware
+    })
 
     # start connection
     print("Connecting to mqtt broker {} on port {}".format(broker_host, broker_port))
@@ -176,7 +176,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--broker-tls-cacert", default=None, required=False,
                         help="CA certificate bundle used to validate TLS connections. If set, TLS will be enabled on the broker conncetion"
-    )
+                        )
 
     # workaround for http://bugs.python.org/issue9694
     parser._optionals.title = "arguments"

@@ -102,6 +102,15 @@ ConfigValidationResult Validation::_validateConfig(const JsonObject object) {
         }
     }
 
+    {
+        JsonVariant pumpGpm = obj["pumpGpm"];
+
+        if (pumpGpm.as<double>() <= 0) {
+            result.reason = F("config.pumpGpm must be greater than 0");
+            return result;
+        }
+    }
+
     result.valid = true;
     return result;
 }

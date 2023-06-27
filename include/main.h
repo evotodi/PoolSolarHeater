@@ -23,13 +23,13 @@
 
 // Debugging Defines >>>
 #define DEBUG 1
-//#define LOG_TO_TELNET 1
+#define LOG_TO_TELNET 1
 //#define NO_ENV_SOLAR_CHECK 1
 //#define NO_ENV_AIR_CHECK 1
 //#define NO_ENV_CLOUD_CHECK 1
 //#define NO_ENV_IN_OUT_DIFF_CHECK 1
 //#define DEBUG_FORCE_TIME 1687217416
-#define PRINT_POOL_CONFIG_ON_READ_WRITE 1
+//#define PRINT_POOL_CONFIG_ON_READ_WRITE 1
 // <<< Debugging Defines
 
 #define LOOP_DAT_DLY          (5*1E3)
@@ -117,6 +117,7 @@ void getDaylight(Daylight * pDaylight);
 void doProcess();
 bool turnHeatOn();
 bool turnHeatOff();
+float calcWatts(float tempIn, float tempOut);
 bool envAllowHeat();
 void calBtnISR();
 void calibratePoolTemps();
