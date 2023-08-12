@@ -543,6 +543,10 @@ void onHomieEvent(const HomieEvent& event)
     else if(event.type == HomieEventType::OTA_FAILED || event.type == HomieEventType::OTA_SUCCESSFUL) {
         otaInProgress = false;
     }
+    else if(event.type == HomieEventType::WIFI_DISCONNECTED) {
+        Homie.getLogger() << F("✖ Failed to connect to wifi. Rebooting...") << endl;
+        ESP.reset();
+    }
 }
 
 bool configLoad()
