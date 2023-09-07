@@ -151,10 +151,10 @@ void setup()
     Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
     Homie_setBrand("PoolHeater")
 
-    valuesNode.advertise("tin").setName("TempIn").setDatatype("float").setUnit("F");
-    valuesNode.advertise("tout").setName("TempOut").setDatatype("float").setUnit("F");
-    valuesNode.advertise("air").setName("Air").setDatatype("float").setUnit("F");
-    valuesNode.advertise("pool").setName("Pool").setDatatype("float").setUnit("F");
+    valuesNode.advertise("tin").setName("TempIn").setDatatype("float").setUnit("°F");
+    valuesNode.advertise("tout").setName("TempOut").setDatatype("float").setUnit("°F");
+    valuesNode.advertise("air").setName("Air").setDatatype("float").setUnit("°F");
+    valuesNode.advertise("pool").setName("Pool").setDatatype("float").setUnit("°F");
     valuesNode.advertise("light").setName("LightLvl").setDatatype("float").setUnit("");
     valuesNode.advertise("azimuth").setName("Azimuth").setDatatype("float").setUnit("°");
     valuesNode.advertise("elevation").setName("Elevation").setDatatype("float").setUnit("°");
@@ -173,14 +173,14 @@ void setup()
     configNode.advertise("overcastCnt").setName("Overcast Cnt").setDatatype("integer").setUnit("").settable();
     configNode.advertise("sunMinElvAM").setName("Sun Min Elv AM").setDatatype("float").setUnit("°").settable();
     configNode.advertise("sunMinElvPM").setName("Sun Min Elv PM").setDatatype("float").setUnit("°").settable();
-    configNode.advertise("setPoint").setName("Set Point").setDatatype("float").setUnit("F").settable();
-    configNode.advertise("setPointSwing").setName("Set Point Swing").setDatatype("float").setUnit("F").settable();
-    configNode.advertise("airPoolDiff").setName("Air Pool Diff").setDatatype("float").setUnit("F").settable();
-    configNode.advertise("poolTempIn").setName("Pool Temp In").setDatatype("integer").setUnit("").settable();
-    configNode.advertise("airOffset").setName("Air Offset").setDatatype("float").setUnit("F").settable();
-    configNode.advertise("poolOffset").setName("Pool Offset").setDatatype("float").setUnit("F").settable();
-    configNode.advertise("tinOffset").setName("TIN Offset").setDatatype("float").setUnit("F").settable();
-    configNode.advertise("toutOffset").setName("TOUT Offset").setDatatype("float").setUnit("F").settable();
+    configNode.advertise("setPoint").setName("Set Point").setDatatype("float").setUnit("°F").settable();
+    configNode.advertise("setPointSwing").setName("Set Point Swing").setDatatype("float").setUnit("°F").settable();
+    configNode.advertise("airPoolDiff").setName("Air Pool Diff").setDatatype("float").setUnit("°F").settable();
+    configNode.advertise("poolTempIn").setName("Pool Temp In").setDatatype("integer").setUnit("°F").settable();
+    configNode.advertise("airOffset").setName("Air Offset").setDatatype("float").setUnit("°F").settable();
+    configNode.advertise("poolOffset").setName("Pool Offset").setDatatype("float").setUnit("°F").settable();
+    configNode.advertise("tinOffset").setName("TIN Offset").setDatatype("float").setUnit("°F").settable();
+    configNode.advertise("toutOffset").setName("TOUT Offset").setDatatype("float").setUnit("°F").settable();
     configNode.advertise("pumpGpm").setName("Pump GPM").setDatatype("float").setUnit("GPM").settable();
 
 #ifdef LOG_TO_TELNET
