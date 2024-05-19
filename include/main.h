@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
+#include <Esp.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 #include <TimeLib.h>
@@ -17,19 +17,24 @@
 #include <Oversampling.h>
 #include <SolarCalculator.h>
 #include <Smoothed.h>
-#include <EasyButton.h>
 #include "PoolSetting.h"
 #include "PoolValidation.h"
+#include "Adafruit_ThinkInk.h"
+#include <SPI.h>
+#include "InterruptButton.h"
+#include "Adafruit_ThinkInk.h"
+
+#define VERSION "1.1.25"
 
 // Debugging Defines >>>
 #define DEBUG 1
-#define LOG_TO_TELNET 1
+//#define LOG_TO_TELNET 1
 //#define NO_ENV_SOLAR_CHECK 1
 //#define NO_ENV_AIR_CHECK 1
 //#define NO_ENV_CLOUD_CHECK 1
 //#define NO_ENV_IN_OUT_DIFF_CHECK 1
 //#define DEBUG_FORCE_TIME 1687217416
-//#define PRINT_POOL_CONFIG_ON_READ_WRITE 1
+#define PRINT_POOL_CONFIG_ON_READ_WRITE 1
 // <<< Debugging Defines
 
 #define LOOP_DAT_DLY          (5*1E3)
@@ -44,17 +49,35 @@
 #define TELNET_PORT 23
 #define DS_TEMP_PRECISION 12
 
-#define ONE_WIRE_BUS   D2
-#define MCP_DIN        D6
-#define MCP_DOUT       D7
-#define MCP_CLK        D5
-#define MCP_CS         D8
-#define RLY_PIN        D1
-#define CAL_PIN        3
+// ESP32 Usable Pins
+#define LED_BUILTIN     2
+#define PIN_AUX_4_SP    4 // SPARE Strapping
+#define MCP_CS          5
+#define ONE_WIRE_BUS    13
+#define BTN2_PIN        14 // Button 2
+#define DISP_EPD_CS     15
+#define DISP_EPD_RESET  16
+#define DISP_SDCS       17 // Used when using the sd card on disp
+#define SPI_CLK         18 // MCP_CLK, DISP_SCK
+#define SPI_MISO        19 // MCP_DOUT, DISP_MISO
+#define LED_PIN         21
+#define PIN_AUX_22      22 // SPARE
+#define SPI_MOSI        23 // MCP_DIN, DISP_MOSI
+#define PUMP_RLY_PIN    25
+#define HEAT_RLY_PIN    26
+#define AUX_RLY_PIN     27
+#define DISP_SRAM_CS    32
+#define DISP_EPD_DC     33
+#define DISP_EPD_BUSY   34
+#define BTN1_PIN        35
+#define PIN_AUX_36_I    36 // SPARE Input Only
+#define PIN_AUX_39_I    39 // SPARE Input Only
 
+// MCP3204 ADC Ports
 #define ADC_LIGHT      0
 #define ADC_AIR        1
 #define ADC_POOL       2
+#define ADC_AUX        3
 
 #define MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE 1024
 
@@ -88,6 +111,27 @@ struct Daylight
 };
 //<< Structures
 
+//>> Enums
+/**
+ * Update the DISP_LAST_NUM_OF_PAGES to equal the total number of pages in the enum
+ */
+enum DisplayPage {
+    DISP_MAIN = 0,
+    DISP_INFO = 1,
+    DISP_CONFIG = 2,
+    DISP_LAST_NUM_OF_PAGES = 3,
+};
+
+/**
+ * Update the MENU_LAST_NUM_OF_PAGES to equal the total number of pages in the enum
+ */
+enum MenuPage {
+    MENU_MAIN = 0,
+    MENU_CONFIG = 1,
+    MENU_LAST_NUM_OF_PAGES = 2,
+};
+//<< Enums
+
 //>> Function Prototypes
 void setupHandler();
 void loopHandler();
@@ -119,7 +163,6 @@ bool turnHeatOn();
 bool turnHeatOff();
 float calcWatts(float tempIn, float tempOut);
 bool envAllowHeat();
-void calBtnISR();
 void calibratePoolTemps();
 void calibrationReset();
 bool configLoad();
@@ -135,4 +178,16 @@ void addPoolTemp();
 void addAirTemp();
 bool mqttHeatOnHandler(const HomieRange& range, const String& value);
 bool configNodeInputHandler(const HomieRange& range, const String& property, const String& value);
+
+void setupButtons();
+void menuMainBtn1KeyPress(void);
+void menuMainBtn1DblClick(void);
+void menuConfigBtn1KeyPress(void);
+void menuConfigBtn1LongPress(void);
+void menuConfigBtn1DblClick(void);
+
+void displayBooting();
+void displayPageMain();
+void displayPageInfo();
+void displayPageConfig();
 //<< Function Prototypes

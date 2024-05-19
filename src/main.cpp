@@ -16,11 +16,15 @@ WiFiServer TelnetServer(TELNET_PORT);
 WiFiClient Telnet;
 #endif
 
-MCP3204 mcp(MCP_DIN, MCP_DOUT, MCP_CLK);
+MCP3204 mcp(&SPI);
 char timestampStrBuf[1024];
 EasyStringStream timestampStream(timestampStrBuf, 1024);
 Oversampling adc(10, 12, 2);
-EasyButton calBtn(CAL_PIN);
+
+InterruptButton button1(BTN1_PIN, LOW);
+InterruptButton button2(BTN2_PIN, LOW);
+
+ThinkInk_154_Mono_D67 display(DISP_EPD_DC, DISP_EPD_RESET, DISP_EPD_CS, DISP_SRAM_CS, DISP_EPD_BUSY, &SPI);
 
 /* >>> These struct values will be changed when loading the spiffs config file */
 DTSetting tinSettings = {"0000000000000000", float(0)};
@@ -114,17 +118,26 @@ auto solar = Solar{};
 auto daylight = Daylight{};
 char statusBuffer[1024];
 EasyStringStream status(statusBuffer, 1024);
+DisplayPage displayPage = DisplayPage::DISP_MAIN;
 
 void setup()
 {
-    pinMode(LED_BUILTIN_AUX, OUTPUT);
-    pinMode(RLY_PIN, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
+    pinMode(PUMP_RLY_PIN, OUTPUT);
+    pinMode(HEAT_RLY_PIN, OUTPUT);
+    pinMode(AUX_RLY_PIN, OUTPUT);
+    pinMode(BTN1_PIN, INPUT);
+    pinMode(BTN2_PIN, INPUT);
 
 #ifdef DEBUG
     Serial.begin(115200);
 #else
     Homie.disableLogging();
 #endif
+
+    display.begin(THINKINK_MONO);
+    display.clearBuffer();
+
     light.begin(SMOOTHED_AVERAGE, 3);
     tin.begin(SMOOTHED_AVERAGE, 10);
     tout.begin(SMOOTHED_AVERAGE, 10);
@@ -135,6 +148,9 @@ void setup()
     status.reset();
 
     WiFi.mode(WIFI_STA);
+
+    display.begin(THINKINK_MONO);
+    displayBooting();
 
     mcp.begin(MCP_CS);
 #ifdef DEBUG
@@ -147,7 +163,7 @@ void setup()
     Serial.println(mcp.maxValue());
 #endif
 
-    Homie_setFirmware("bare-minimum", "1.0.1")
+    Homie_setFirmware("bare-minimum", VERSION)
     Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
     Homie_setBrand("PoolHeater")
 
@@ -222,13 +238,23 @@ void setupHandler()
     setSyncProvider(getNtpTime);
     setSyncInterval(600);
     yield();
+    Homie.getLogger() << "HERE 1" << endl;
+    Homie.getLogger() << "poolTinDtSetting: " << poolTinDtSetting.get() << endl;
+    Homie.getLogger() << "poolTinOffsetSetting: " << poolTinOffsetSetting.get() << endl;
+    Homie.getLogger() << "poolToutDtSetting: " << poolToutDtSetting.get() << endl;
+    Homie.getLogger() << "poolToutOffsetSetting: " << poolToutOffsetSetting.get() << endl;
+    Homie.getLogger() << "poolAirNtcSetting: " << poolAirNtcSetting.get() << endl;
+    Homie.getLogger() << "poolPoolNtcSetting: " << poolPoolNtcSetting.get() << endl;
+
 
     parseDTSettings(&tinSettings, poolTinDtSetting.get(), poolTinOffsetSetting.get(), "Tin");
     strToAddress(tinSettings.addr, tempSensorIn);
+    Homie.getLogger() << "HERE 2" << endl;
 
     parseDTSettings(&toutSettings, poolToutDtSetting.get(), poolToutOffsetSetting.get(), "Tout");
     strToAddress(toutSettings.addr, tempSensorOut);
     yield();
+    Homie.getLogger() << "HERE 3" << endl;
 
     parseNTCSettings(&thermistorAirSettings, poolAirNtcSetting.get(), "Air");
     thermistorAir.setSeriesResistor(&thermistorAirSettings.seriesResistor);
@@ -251,13 +277,9 @@ void setupHandler()
     yield();
 
     setupOwSensors();
+    setupButtons();
 
-    calBtn.begin();
-    calBtn.onPressedFor(2000, calibratePoolTemps);
-    calBtn.onSequence(2, 1500, calibrationReset);
-    calBtn.enableInterrupt(calBtnISR);
-
-    digitalWrite(LED_BUILTIN_AUX, HIGH);
+    digitalWrite(LED_PIN, HIGH);
 }
 
 void loopHandler() 
@@ -306,7 +328,7 @@ void loopHandler()
             Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F" << endl;
             yield();
 
-            light.add(mcp.analogRead(ADC_LIGHT));
+            light.add(mcp.read(ADC_LIGHT));
             if (light.get() <= poolConfigCloudySetting.get()) {
                 isCloudy = true;
                 cloudyCnt++;
@@ -337,7 +359,6 @@ void loopHandler()
             previousMillisData = currentMillis;
         }
         yield();
-        calBtn.update();
 
         // Process data
         if (currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) {
@@ -349,7 +370,6 @@ void loopHandler()
             previousMillisProc = currentMillis;
         }
         yield();
-        calBtn.update();
 
         // Publish data
         if (currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
@@ -381,7 +401,6 @@ void loopHandler()
             previousMillisPub = currentMillis;
         }
         yield();
-        calBtn.update();
 
         // Publish Config
         if (currentMillis - previousMillisPubCfg > intervalPubCfg || previousMillisPubCfg == 0) {
@@ -407,7 +426,6 @@ void loopHandler()
             previousMillisPubCfg = currentMillis;
         }
         yield();
-        calBtn.update();
     }
     // Update Daylight
     if (currentMillis - previousMillisDaylight > intervalDayLight || previousMillisDaylight == 0) {
@@ -431,7 +449,6 @@ void loopHandler()
         previousMillisHB = currentMillis;
     }
 
-    calBtn.update();
     firstRun = false;
 }
 
@@ -545,7 +562,7 @@ void onHomieEvent(const HomieEvent& event)
     }
     else if(event.type == HomieEventType::WIFI_DISCONNECTED) {
         Homie.getLogger() << F("✖ Failed to connect to wifi. Rebooting...") << endl;
-        ESP.reset();
+        esp_restart();
     }
 }
 
@@ -605,25 +622,17 @@ void configRead()
         return;
     }
 
-    char buf[HomieInternals::MAX_JSON_CONFIG_FILE_SIZE];
-    configFile.readBytes(buf, configSize);
-#ifdef PRINT_POOL_CONFIG_ON_READ_WRITE
-    configFile.seek(0);
-    Homie.getLogger() << F("Read Pool Config File Content >>>") << endl;
-    while(configFile.available()){
-        Homie.getLogger().write(configFile.read());
-    }
-    Homie.getLogger() << "<<<" << endl;
-#endif
-    configFile.close();
-    buf[configSize] = '\0';
-
-
     poolJsonDoc.clear();
-    if (deserializeJson(poolJsonDoc, buf) != DeserializationError::Ok || !poolJsonDoc.is<JsonObject>()) {
+    if (deserializeJson(poolJsonDoc, configFile) != DeserializationError::Ok || !poolJsonDoc.is<JsonObject>()) {
         Homie.getLogger() << F("✖ Invalid JSON in the pool config file") << endl;
+        configFile.close();
         return;
     }
+
+#ifdef PRINT_POOL_CONFIG_ON_READ_WRITE
+    serializeJsonPretty(poolJsonDoc, Serial);
+#endif
+    configFile.close();
 }
 #pragma clang diagnostic pop
 
@@ -632,8 +641,17 @@ void configRead()
 #pragma ide diagnostic ignored "cppcoreguidelines-pro-type-static-cast-downcast"
 void configSetPoolSettings(JsonObject settingsObject, std::vector<PoolInternals::IPoolSetting*> * settings)
 {
+    Homie.getLogger() << "In configSetPoolSettings" << endl;
+    serializeJsonPretty(settingsObject, Serial);
+    Serial.println("");
+    Serial.println(settings->size());
+
     for (auto &iSetting : *settings) {
+        Homie.getLogger() << "Setting name: " << iSetting->getName() << endl;
+
         JsonVariant reqSetting = settingsObject[iSetting->getName()];
+        Serial.print("SETTING: ");
+        Serial.println(reqSetting.as<const char *>());
 
         if (!reqSetting.isNull()) {
             if (iSetting->isBool()) {
@@ -972,7 +990,7 @@ void setupOwSensors()
 
 int16_t mcpReadCallback(uint8_t channel) 
 {
-    return mcp.analogRead(channel);
+    return mcp.read(channel);
 }
 
 void parseNTCSettings(ThermistorSettings * ts, const char * settings, const char * name)
@@ -1190,7 +1208,7 @@ bool turnHeatOn()
     if(!isHeating){
         Homie.getLogger() << "Heat turned on" << endl;
     }
-    digitalWrite(RLY_PIN, HIGH);
+    digitalWrite(PUMP_RLY_PIN, HIGH);
     isHeating = true;
     return true;
 }
@@ -1200,7 +1218,7 @@ bool turnHeatOff()
     if(isHeating){
         Homie.getLogger() << "Heat turned off" << endl;
     }
-    digitalWrite(RLY_PIN, LOW);
+    digitalWrite(PUMP_RLY_PIN, LOW);
     isHeating = false;
 
     return true;
@@ -1297,22 +1315,17 @@ bool envAllowHeat()
     return rtn;
 }
 
-void calBtnISR()
-{
-    calBtn.read();
-}
-
 void calibratePoolTemps()
 {
     Homie.getLogger() << "Calibration Started!" << endl;
-    digitalWrite(LED_BUILTIN_AUX, LOW);
+    digitalWrite(LED_PIN, LOW);
     delay(2000);
     tin.clear();
     tout.clear();
     pool.clear();
 
     for (int i = 0; i < 10; i++) {
-        digitalWrite(LED_BUILTIN_AUX, !digitalRead(LED_BUILTIN_AUX));
+        digitalWrite(LED_PIN, !digitalRead(LED_PIN));
         sensors.requestTemperatures();
         delay(100);
 
@@ -1326,7 +1339,7 @@ void calibratePoolTemps()
         yield();
     }
 
-    digitalWrite(LED_BUILTIN_AUX, LOW);
+    digitalWrite(LED_PIN, LOW);
 
     if(poolConfigPoolTempInSetting.get() == 0) {
         toutSettings.offset = ItoF(tin.get()) - ItoF(tout.get());
@@ -1342,19 +1355,19 @@ void calibratePoolTemps()
     configWrite();
 
     Homie.getLogger() << F("✔ Calibration Completed!") << endl;
-    digitalWrite(LED_BUILTIN_AUX, HIGH);
+    digitalWrite(LED_PIN, HIGH);
 
 }
 
 void calibrationReset()
 {
     Homie.getLogger() << F("✔ Calibration Reset!") << endl;
-    digitalWrite(LED_BUILTIN_AUX, LOW);
+    digitalWrite(LED_PIN, LOW);
     tinSettings.offset = float(0);
     toutSettings.offset = float(0);
     configWrite();
     delay(500);
-    digitalWrite(LED_BUILTIN_AUX, HIGH);
+    digitalWrite(LED_PIN, HIGH);
 }
 
 float ItoF(const int val)
@@ -1589,3 +1602,167 @@ bool configNodeInputHandler(const HomieRange& range, const String& property, con
     return true;
 }
 #pragma clang diagnostic pop
+
+void setupButtons() {
+    InterruptButton::setMenuCount(MenuPage::MENU_LAST_NUM_OF_PAGES);
+    InterruptButton::setMenuLevel(MenuPage::MENU_MAIN);
+    InterruptButton::setMode(Mode_Asynchronous);
+
+    button1.bind(Event_KeyPress, MenuPage::MENU_MAIN, &menuMainBtn1KeyPress);
+    button1.bind(Event_DoubleClick, MenuPage::MENU_MAIN, &menuMainBtn1DblClick);
+
+    button1.bind(Event_KeyPress, MenuPage::MENU_CONFIG, &menuConfigBtn1KeyPress);
+    button1.bind(Event_LongKeyPress, MenuPage::MENU_CONFIG, &menuConfigBtn1LongPress);
+    button1.bind(Event_DoubleClick, MenuPage::MENU_CONFIG, &menuConfigBtn1DblClick);
+}
+
+void menuMainBtn1KeyPress(void) {
+    Serial.printf("Menu MAIN, Button 1: Key Down:              %lu ms\n", millis());
+    int8_t page = displayPage + 1;
+    Serial.printf("Page = %d\n", page);
+
+    switch (page) {
+        case DisplayPage::DISP_INFO:
+            InterruptButton::setMenuLevel(MenuPage::MENU_MAIN);
+            displayPageInfo();
+            displayPage = DisplayPage::DISP_INFO;
+            break;
+        case DisplayPage::DISP_CONFIG:
+            InterruptButton::setMenuLevel(MenuPage::MENU_CONFIG);
+            displayPageConfig();
+            displayPage = DisplayPage::DISP_CONFIG;
+            break;
+        default:
+            InterruptButton::setMenuLevel(MenuPage::MENU_MAIN);
+            displayPageMain();
+            displayPage = DisplayPage::DISP_MAIN;
+    }
+}
+
+void menuMainBtn1DblClick(void) {
+    Serial.printf("Menu MAIN, Button 1: Long Press:              %lu ms\n", millis());
+    switch (displayPage) {
+        case DisplayPage::DISP_MAIN:
+            displayPageMain();
+            break;
+        case DisplayPage::DISP_INFO:
+            displayPageInfo();
+            break;
+        default:
+            return;
+    }
+}
+
+void menuConfigBtn1KeyPress(void) {
+    menuMainBtn1KeyPress();
+}
+
+void menuConfigBtn1LongPress(void) {
+    Serial.printf("Menu CONFIG, Button 1: Long Key Press:              %lu ms\n", millis());
+    //todo-evo: Finish me
+}
+
+void menuConfigBtn1DblClick(void) {
+    Serial.printf("Menu CONFIG, Button 1: Double Click:              %lu ms\n", millis());
+    //todo-evo: Finish me
+}
+
+void displayBooting() {
+    display.clearBuffer();
+    display.setTextSize(3);
+    display.setTextColor(EPD_BLACK);
+
+    display.setCursor(0, 80);
+    display.println("Booting...");
+
+    display.display();
+}
+
+void displayPageMain() {
+    display.clearBuffer();
+    display.setTextSize(3);
+    display.setTextColor(EPD_BLACK);
+    const int16_t val_x = 78;
+    const int16_t line_y = 26;
+
+    display.setCursor(0, 0);
+    display.println("OFF");
+//    display.println("EXTRA");
+
+    display.setCursor(0, line_y * 2);
+    display.print("Pool");
+    display.setCursor(val_x, line_y * 2);
+    display.print("100.5");
+
+    display.setCursor(0, line_y * 3);
+    display.print("In");
+    display.setCursor(val_x, line_y * 3);
+    display.print("75.2");
+
+    display.setCursor(0, line_y * 4);
+    display.print("Out");
+    display.setCursor(val_x, line_y * 4);
+    display.print("100.5");
+
+    display.setCursor(0, line_y * 5);
+    display.print("Air");
+    display.setCursor(val_x, line_y * 5);
+    display.print("88.6");
+
+    display.display();
+}
+
+void displayPageInfo() {
+    display.clearBuffer();
+    display.setTextSize(2);
+    display.setTextColor(EPD_BLACK);
+    display.setCursor(0, 0);
+
+    display.print("Light: ");
+    display.println("3826");
+
+    display.print("SP: ");
+    display.println("92");
+
+    display.print("Swing: ");
+    display.println("1");
+
+    display.print("Az: ");
+    display.println("110.96");
+
+    display.print("Elv: ");
+    display.println("53.30");
+
+    display.print("Watts: ");
+    display.println("47235.5");
+
+    display.print("Cloudy: ");
+    display.println("Yes");
+
+    display.print("Over Cast: ");
+    display.println("Yes");
+
+    display.print("At SP: ");
+    display.println("No");
+
+    display.print("Env Ovrd: ");
+    display.println("Yes");
+
+    display.display();
+}
+
+void displayPageConfig() {
+    display.clearBuffer();
+    display.setTextSize(2);
+    display.setTextColor(EPD_BLACK);
+    display.setCursor(0, 0);
+
+    display.println("CONFIG");
+    display.println("");
+    display.println("Long press:");
+    display.println("calibrate something");
+    display.println("");
+    display.println("Double click:");
+    display.println("calibrate something else");
+    display.display();
+}
