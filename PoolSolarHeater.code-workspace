@@ -60,7 +60,25 @@
 			"string_iostream": "cpp",
 			"type_traits": "cpp",
 			"typeinfo": "cpp",
-			"utility": "cpp"
+			"utility": "cpp",
+			"atomic": "cpp",
+			"*.tcc": "cpp",
+			"chrono": "cpp",
+			"condition_variable": "cpp",
+			"csignal": "cpp",
+			"unordered_map": "cpp",
+			"memory_resource": "cpp",
+			"optional": "cpp",
+			"random": "cpp",
+			"ratio": "cpp",
+			"regex": "cpp",
+			"string_view": "cpp",
+			"system_error": "cpp",
+			"tuple": "cpp",
+			"fstream": "cpp",
+			"mutex": "cpp",
+			"thread": "cpp",
+			"cinttypes": "cpp"
 		}
 	}
 }

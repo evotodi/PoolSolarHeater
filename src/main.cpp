@@ -22,9 +22,9 @@ EasyStringStream timestampStream(timestampStrBuf, 1024);
 Oversampling adc(10, 12, 2);
 
 InterruptButton button1(BTN1_PIN, LOW);
-InterruptButton button2(BTN2_PIN, LOW);
+// InterruptButton button2(BTN2_PIN, LOW);
 
-ThinkInk_154_Mono_D67 display(DISP_EPD_DC, DISP_EPD_RESET, DISP_EPD_CS, DISP_SRAM_CS, DISP_EPD_BUSY, &SPI);
+Adafruit_ILI9341 tft = Adafruit_ILI9341(&SPI, TFT_DC, TFT_CS, TFT_RST);
 
 /* >>> These struct values will be changed when loading the spiffs config file */
 DTSetting tinSettings = {"0000000000000000", float(0)};
@@ -43,40 +43,35 @@ HomieNode configNode("config", "Config", "string", false, 0, 0, configNodeInputH
 
 DynamicJsonDocument poolJsonDoc(MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE);
 
-std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolConfigSettings;
-PoolSetting<uint16_t> poolConfigCloudySetting("cloudy", "Cloudy", &poolConfigSettings);
-PoolSetting<uint16_t> poolConfigOvercastCntSetting("overcastCnt", "Overcast Count", &poolConfigSettings);
-PoolSetting<double> poolConfigSunMinElvAMSetting("sunMinElvAM", "Sun Min Elv AM", &poolConfigSettings);
-PoolSetting<double> poolConfigSunMinElvPMSetting("sunMinElvPM", "Sun Min Elv PM", &poolConfigSettings);
-PoolSetting<double> poolConfigSetPointSetting("setPoint", "Set Point", &poolConfigSettings);
-PoolSetting<double> poolConfigSetPointSwingSetting("setPointSwing", "Set Point Swing", &poolConfigSettings);
-PoolSetting<double> poolConfigAirPoolDiffSetting("airPoolDiff", "Air Pool Diff", &poolConfigSettings);
-PoolSetting<uint16_t> poolConfigPoolTempInSetting("poolTempIn", "Pool Temp Input", &poolConfigSettings); // 0 = tin 1 = ntc
-PoolSetting<double> poolConfigPumpGpmSetting("pumpGpm", "Pump GPM", &poolConfigSettings);
+PoolSetting<uint16_t> poolConfigCloudySetting("cloudy", "Cloudy", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<uint16_t> poolConfigOvercastCntSetting("overcastCnt", "Overcast Count", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<double> poolConfigSunMinElvAMSetting("sunMinElvAM", "Sun Min Elv AM", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<double> poolConfigSunMinElvPMSetting("sunMinElvPM", "Sun Min Elv PM", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<double> poolConfigSetPointSetting("setPoint", "Set Point", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<double> poolConfigSetPointSwingSetting("setPointSwing", "Set Point Swing", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<double> poolConfigAirPoolDiffSetting("airPoolDiff", "Air Pool Diff", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<uint16_t> poolConfigPoolTempInSetting("poolTempIn", "Pool Temp Input", &PoolInternals::IPoolSetting::settingsConfig); // 0 = tin 1 = ntc
+PoolSetting<double> poolConfigPumpGpmSetting("pumpGpm", "Pump GPM", &PoolInternals::IPoolSetting::settingsConfig);
 
-std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolProbeOffsetSettings;
-PoolSetting<double> poolAirOffsetSetting("air", "air offset", &poolProbeOffsetSettings);
-PoolSetting<double> poolPoolOffsetSetting("pool", "pool offset", &poolProbeOffsetSettings);
-PoolSetting<double> poolTinOffsetSetting("tin", "tin offset", &poolProbeOffsetSettings);
-PoolSetting<double> poolToutOffsetSetting("tout", "tout offset", &poolProbeOffsetSettings);
+PoolSetting<double> poolAirOffsetSetting("air", "air offset", &PoolInternals::IPoolSetting::settingsProbeOffset);
+PoolSetting<double> poolPoolOffsetSetting("pool", "pool offset", &PoolInternals::IPoolSetting::settingsProbeOffset);
+PoolSetting<double> poolTinOffsetSetting("tin", "tin offset", &PoolInternals::IPoolSetting::settingsProbeOffset);
+PoolSetting<double> poolToutOffsetSetting("tout", "tout offset", &PoolInternals::IPoolSetting::settingsProbeOffset);
 
-std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolProbeSettings;
-PoolSetting<const char *> poolAirNtcSetting("air", "air kv", &poolProbeSettings);
-PoolSetting<const char *> poolPoolNtcSetting("pool", "pool kv", &poolProbeSettings);
-PoolSetting<const char *> poolTinDtSetting("tin", "tin kv", &poolProbeSettings);
-PoolSetting<const char *> poolToutDtSetting("tout", "tout kv", &poolProbeSettings);
+PoolSetting<const char *> poolAirNtcSetting("air", "air kv", &PoolInternals::IPoolSetting::settingsProbe);
+PoolSetting<const char *> poolPoolNtcSetting("pool", "pool kv", &PoolInternals::IPoolSetting::settingsProbe);
+PoolSetting<const char *> poolTinDtSetting("tin", "tin kv", &PoolInternals::IPoolSetting::settingsProbe);
+PoolSetting<const char *> poolToutDtSetting("tout", "tout kv", &PoolInternals::IPoolSetting::settingsProbe);
 
-std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolTimeSettings;
-PoolSetting<int16_t> poolDstOffsetSetting("dstOffset", "DST Offset Hours", &poolTimeSettings);
-PoolSetting<int16_t> poolStOffsetSetting("stOffset", "ST Offset Hours", &poolTimeSettings);
-PoolSetting<uint16_t> poolDstBeginDaySetting("dstBeginDay", "DST begin day", &poolTimeSettings);
-PoolSetting<uint16_t> poolDstBeginMonthSetting("dstBeginMonth", "DST begin month", &poolTimeSettings);
-PoolSetting<uint16_t> poolDstEndDaySetting("dstEndDay", "DST end day", &poolTimeSettings);
-PoolSetting<uint16_t> poolDstEndMonthSetting("dstEndMonth", "DST end month", &poolTimeSettings);
+PoolSetting<int16_t> poolDstOffsetSetting("dstOffset", "DST Offset Hours", &PoolInternals::IPoolSetting::settingsTime);
+PoolSetting<int16_t> poolStOffsetSetting("stOffset", "ST Offset Hours", &PoolInternals::IPoolSetting::settingsTime);
+PoolSetting<uint16_t> poolDstBeginDaySetting("dstBeginDay", "DST begin day", &PoolInternals::IPoolSetting::settingsTime);
+PoolSetting<uint16_t> poolDstBeginMonthSetting("dstBeginMonth", "DST begin month", &PoolInternals::IPoolSetting::settingsTime);
+PoolSetting<uint16_t> poolDstEndDaySetting("dstEndDay", "DST end day", &PoolInternals::IPoolSetting::settingsTime);
+PoolSetting<uint16_t> poolDstEndMonthSetting("dstEndMonth", "DST end month", &PoolInternals::IPoolSetting::settingsTime);
 
-std::vector<PoolInternals::IPoolSetting*> __attribute__((init_priority(101))) poolLocationSettings;
-PoolSetting<double> poolLatitudeSetting("latitude", "Latitude", &poolLocationSettings);
-PoolSetting<double> poolLongitudeSetting("longitude", "Longitude", &poolLocationSettings);
+PoolSetting<double> poolLatitudeSetting("latitude", "Latitude", &PoolInternals::IPoolSetting::settingsLocation);
+PoolSetting<double> poolLongitudeSetting("longitude", "Longitude", &PoolInternals::IPoolSetting::settingsLocation);
 
 unsigned long currentMillis = 0;
 unsigned long intervalData = LOOP_DAT_DLY;
@@ -119,6 +114,11 @@ auto daylight = Daylight{};
 char statusBuffer[1024];
 EasyStringStream status(statusBuffer, 1024);
 DisplayPage displayPage = DisplayPage::DISP_MAIN;
+char ip[17] = "\0";
+char runStatus[15] = "Off\0";
+bool pumpOn = false;
+bool propaneOn = false;
+bool auxOn = false;
 
 void setup()
 {
@@ -127,7 +127,9 @@ void setup()
     pinMode(HEAT_RLY_PIN, OUTPUT);
     pinMode(AUX_RLY_PIN, OUTPUT);
     pinMode(BTN1_PIN, INPUT);
-    pinMode(BTN2_PIN, INPUT);
+    // pinMode(BTN2_PIN, INPUT);
+    pinMode(TFT_LED, OUTPUT);
+    pinMode(TFT_CS, OUTPUT);
 
 #ifdef DEBUG
     Serial.begin(115200);
@@ -135,8 +137,24 @@ void setup()
     Homie.disableLogging();
 #endif
 
-    display.begin(THINKINK_MONO);
-    display.clearBuffer();
+    digitalWrite(TFT_LED, HIGH);
+    digitalWrite(TFT_CS, HIGH);
+    tft.begin();
+#ifdef DEBUG
+    // read diagnostics (optional but can help debug problems)
+    uint8_t x = tft.readcommand8(ILI9341_RDMODE);
+    Serial.print("TFT Power Mode: 0x"); Serial.println(x, HEX);
+    x = tft.readcommand8(ILI9341_RDMADCTL);
+    Serial.print("TFT MADCTL Mode: 0x"); Serial.println(x, HEX);
+    x = tft.readcommand8(ILI9341_RDPIXFMT);
+    Serial.print("TFT Pixel Format: 0x"); Serial.println(x, HEX);
+    x = tft.readcommand8(ILI9341_RDIMGFMT);
+    Serial.print("TFT Image Format: 0x"); Serial.println(x, HEX);
+    x = tft.readcommand8(ILI9341_RDSELFDIAG);
+    Serial.print("TFT Self Diagnostic: 0x"); Serial.println(x, HEX);
+#endif
+
+    displayCenterMessage("Booting...");
 
     light.begin(SMOOTHED_AVERAGE, 3);
     tin.begin(SMOOTHED_AVERAGE, 10);
@@ -148,9 +166,6 @@ void setup()
     status.reset();
 
     WiFi.mode(WIFI_STA);
-
-    display.begin(THINKINK_MONO);
-    displayBooting();
 
     mcp.begin(MCP_CS);
 #ifdef DEBUG
@@ -201,9 +216,11 @@ void setup()
 
 #ifdef LOG_TO_TELNET
     Homie.setLoggingPrinter(&Telnet);
-    Homie.onEvent(onHomieEvent);
 #endif
 
+    Homie.onEvent(onHomieEvent);
+
+    displayCenterMessage("Config load...");
     if (!configLoad()) {
         Homie.getLogger() << F("Pool configuration invalid.") << endl;
         delay(5000);
@@ -211,6 +228,7 @@ void setup()
     }
     configUpdateStructs();
 
+    displayCenterMessage("Homie\nStartup...");
     Homie.setup();
 }
 
@@ -230,6 +248,7 @@ void setupHandler()
     Serial.print("Starting telnet server on port "); Serial.println(TELNET_PORT);
 #endif
 
+    displayCenterMessage("NTP...");
     timeClient.begin();
     yield();
     timeClient.forceUpdate();
@@ -238,7 +257,8 @@ void setupHandler()
     setSyncProvider(getNtpTime);
     setSyncInterval(600);
     yield();
-    Homie.getLogger() << "HERE 1" << endl;
+
+    displayCenterMessage("Pool Config...");
     Homie.getLogger() << "poolTinDtSetting: " << poolTinDtSetting.get() << endl;
     Homie.getLogger() << "poolTinOffsetSetting: " << poolTinOffsetSetting.get() << endl;
     Homie.getLogger() << "poolToutDtSetting: " << poolToutDtSetting.get() << endl;
@@ -249,12 +269,10 @@ void setupHandler()
 
     parseDTSettings(&tinSettings, poolTinDtSetting.get(), poolTinOffsetSetting.get(), "Tin");
     strToAddress(tinSettings.addr, tempSensorIn);
-    Homie.getLogger() << "HERE 2" << endl;
 
     parseDTSettings(&toutSettings, poolToutDtSetting.get(), poolToutOffsetSetting.get(), "Tout");
     strToAddress(toutSettings.addr, tempSensorOut);
     yield();
-    Homie.getLogger() << "HERE 3" << endl;
 
     parseNTCSettings(&thermistorAirSettings, poolAirNtcSetting.get(), "Air");
     thermistorAir.setSeriesResistor(&thermistorAirSettings.seriesResistor);
@@ -278,13 +296,14 @@ void setupHandler()
 
     setupOwSensors();
     setupButtons();
-
+    displayPageMain();
     digitalWrite(LED_PIN, HIGH);
 }
 
 void loopHandler() 
 {
     currentMillis = millis();
+    button1.processSyncEvents();
 
     if (!otaInProgress) {
         // Gather data
@@ -356,6 +375,13 @@ void loopHandler()
             yield();
 
             Homie.getLogger() << endl;
+
+            if (displayPage == DisplayPage::DISP_MAIN) {
+                displayPageMainUpdate();
+            } else if (displayPage == DisplayPage::DISP_INFO) {
+                displayPageInfo();
+            }
+
             previousMillisData = currentMillis;
         }
         yield();
@@ -433,6 +459,7 @@ void loopHandler()
         previousMillisDaylight = currentMillis;
     }
     yield();
+    button1.processSyncEvents();
 
     // Blink the heartbeat led
     if (currentMillis - previousMillisHB > intervalHB || previousMillisHB == 0) {
@@ -551,17 +578,25 @@ void onHomieEvent(const HomieEvent& event)
         }
         TelnetServer.close();
 #endif
+        displayCenterMessage("OTA Updating...");
         otaInProgress = true;
     }
     else if(event.type == HomieEventType::WIFI_CONNECTED) {
-        Serial.print("Wi-Fi connected, IP: ");
-        Serial.println(event.ip);
+        sprintf(ip, "%s", event.ip.toString().c_str());
+        Serial.printf("Wi-Fi connected, IP: %s", ip);
+        char s[32];
+        sprintf(s, "IP Address\n%s", ip);
+        displayCenterMessage(s);
+        delay(1500);
     }
     else if(event.type == HomieEventType::OTA_FAILED || event.type == HomieEventType::OTA_SUCCESSFUL) {
+        displayCenterMessage("OTA Update\nFAILED!");
         otaInProgress = false;
+        delay(3000);
     }
     else if(event.type == HomieEventType::WIFI_DISCONNECTED) {
         Homie.getLogger() << F("✖ Failed to connect to wifi. Rebooting...") << endl;
+        displayCenterMessage("WIFI\nDisconnected");
         esp_restart();
     }
 }
@@ -573,29 +608,28 @@ bool configLoad()
 
     PoolInternals::ConfigValidationResult configValidationResult = PoolInternals::Validation::validateConfig(parsedJson);
     if (!configValidationResult.valid) {
-        Homie.getLogger() << F("✖ Pool config file is not valid, reason: ") << configValidationResult.reason << endl;
+//        Homie.getLogger() << F("✖ Pool config file is not valid, reason: ") << configValidationResult.reason << endl;
+        Serial.printf("✖ Pool config file is not valid, reason: %s\n", configValidationResult.reason.c_str());
 
         return false;
     }
 
-    configSetPoolSettings(parsedJson["config"].as<JsonObject>(), &poolConfigSettings);
-    configSetPoolSettings(parsedJson["probeOffsets"].as<JsonObject>(), &poolProbeOffsetSettings);
-    configSetPoolSettings(parsedJson["probeSettings"].as<JsonObject>(), &poolProbeSettings);
-    configSetPoolSettings(parsedJson["time"].as<JsonObject>(), &poolTimeSettings);
-    configSetPoolSettings(parsedJson["location"].as<JsonObject>(), &poolLocationSettings);
+    configSetPoolSettings(parsedJson["config"].as<JsonObject>(), &PoolInternals::IPoolSetting::settingsConfig);
+    configSetPoolSettings(parsedJson["probeOffsets"].as<JsonObject>(), &PoolInternals::IPoolSetting::settingsProbeOffset);
+    configSetPoolSettings(parsedJson["probeSettings"].as<JsonObject>(), &PoolInternals::IPoolSetting::settingsProbe);
+    configSetPoolSettings(parsedJson["time"].as<JsonObject>(), &PoolInternals::IPoolSetting::settingsTime);
+    configSetPoolSettings(parsedJson["location"].as<JsonObject>(), &PoolInternals::IPoolSetting::settingsLocation);
 
-    Homie.getLogger() << endl << F("{} Stored Pool configuration") << endl;
-    configLogSettings("Config", &poolConfigSettings);
-    configLogSettings("Probe Offsets", &poolProbeOffsetSettings);
-    configLogSettings("Probe Settings", &poolProbeSettings);
-    configLogSettings("Time", &poolTimeSettings);
-    configLogSettings("Location", &poolLocationSettings);
+//    Homie.getLogger() << endl << F("{} Stored Pool configuration") << endl;
+    configLogSettings("Config", &PoolInternals::IPoolSetting::settingsConfig);
+    configLogSettings("Probe Offsets", &PoolInternals::IPoolSetting::settingsProbeOffset);
+    configLogSettings("Probe Settings", &PoolInternals::IPoolSetting::settingsProbe);
+    configLogSettings("Time", &PoolInternals::IPoolSetting::settingsTime);
+    configLogSettings("Location", &PoolInternals::IPoolSetting::settingsLocation);
 
     return true;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 void configRead()
 {
     if(!SPIFFS.begin()){
@@ -634,24 +668,11 @@ void configRead()
 #endif
     configFile.close();
 }
-#pragma clang diagnostic pop
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "modernize-use-auto"
-#pragma ide diagnostic ignored "cppcoreguidelines-pro-type-static-cast-downcast"
 void configSetPoolSettings(JsonObject settingsObject, std::vector<PoolInternals::IPoolSetting*> * settings)
 {
-    Homie.getLogger() << "In configSetPoolSettings" << endl;
-    serializeJsonPretty(settingsObject, Serial);
-    Serial.println("");
-    Serial.println(settings->size());
-
     for (auto &iSetting : *settings) {
-        Homie.getLogger() << "Setting name: " << iSetting->getName() << endl;
-
         JsonVariant reqSetting = settingsObject[iSetting->getName()];
-        Serial.print("SETTING: ");
-        Serial.println(reqSetting.as<const char *>());
 
         if (!reqSetting.isNull()) {
             if (iSetting->isBool()) {
@@ -671,16 +692,12 @@ void configSetPoolSettings(JsonObject settingsObject, std::vector<PoolInternals:
                 setting->set(reqSetting.as<double>());
             } else if (iSetting->isConstChar()) {
                 PoolSetting<const char*>* setting = static_cast<PoolSetting<const char*>*>(iSetting);
-                setting->set(strdup(reqSetting.as<const char*>()));
+                setting->set(reqSetting.as<const char*>());
             }
         }
     }
 }
-#pragma clang diagnostic pop
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "modernize-use-auto"
-#pragma ide diagnostic ignored "cppcoreguidelines-pro-type-static-cast-downcast"
 void configLogSettings(const char * name, std::vector<PoolInternals::IPoolSetting*> * settings)
 {
     if (!settings->empty()) {
@@ -711,10 +728,7 @@ void configLogSettings(const char * name, std::vector<PoolInternals::IPoolSettin
         }
     }
 }
-#pragma clang diagnostic pop
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 void configWrite()
 {
     poolJsonDoc.clear();
@@ -775,7 +789,6 @@ void configWrite()
 
     Homie.getLogger() << F("✔ Pool config file written") << endl << endl;
 }
-#pragma clang diagnostic pop
 
 void configUpdateStructs()
 {
@@ -932,6 +945,7 @@ void printAddress(DeviceAddress deviceAddress)
 void setupOwSensors() 
 {
     Homie.getLogger() << "Locating one wire devices..." << endl;
+    displayCenterMessage("1Wire...");
 
     sensors.begin();
     sensors.setWaitForConversion(true);
@@ -1052,7 +1066,7 @@ void toggleManualHeatingEnable()
     }else{
         Homie.getLogger() << "Environment Manual Heating Disabled !" << endl;
         manualHeating = false;
-        turnHeatOff();
+        heatOff();
     }
 
 }
@@ -1074,9 +1088,9 @@ void toggleManualHeating()
     manualHeating = !manualHeating;
 
     if(manualHeating) {
-        turnHeatOn();
+        heatOn();
     }else{
-        turnHeatOff();
+        heatOff();
     }
 }
 
@@ -1185,43 +1199,72 @@ void doProcess()
 
     if(ItoF(pool.get()) >= poolConfigSetPointSetting.get()) {
         Homie.getLogger() << "Set point reached" << endl;
-        turnHeatOff();
+        heatOff();
         atSetpoint = true;
         return;
     }
 
     if(ItoF(pool.get()) < (poolConfigSetPointSetting.get() - poolConfigSetPointSwingSetting.get())){
         atSetpoint = false;
+        heatOn();
     }
-
-    turnHeatOn();
 }
 
-bool turnHeatOn()
+bool heatOn()
 {
     if(!envAllowHeat()){
         Homie.getLogger() << "Env not allow heat on" << endl;
-        turnHeatOff();
+        heatOff();
         return false;
     }
 
     if(!isHeating){
         Homie.getLogger() << "Heat turned on" << endl;
     }
-    digitalWrite(PUMP_RLY_PIN, HIGH);
+    setPumpOn();
     isHeating = true;
     return true;
 }
 
-bool turnHeatOff()
+bool heatOff()
 {
     if(isHeating){
         Homie.getLogger() << "Heat turned off" << endl;
     }
-    digitalWrite(PUMP_RLY_PIN, LOW);
+    setPumpOff();
     isHeating = false;
 
     return true;
+}
+
+void setPumpOn() {
+    digitalWrite(PUMP_RLY_PIN, HIGH);
+    pumpOn = true;
+}
+
+void setPumpOff() {
+    digitalWrite(PUMP_RLY_PIN, LOW);
+    pumpOn = false;
+}
+
+void setPropaneOn() {
+    digitalWrite(HEAT_RLY_PIN, HIGH);
+    propaneOn = true;
+}
+
+void setPropaneOff() {
+    digitalWrite(HEAT_RLY_PIN, LOW);
+    propaneOn = false;
+}
+
+void setAuxOn() {
+    digitalWrite(AUX_RLY_PIN, HIGH);
+    auxOn = true;
+}
+
+void setAuxOff() {
+    digitalWrite(AUX_RLY_PIN, LOW);
+    auxOn = false;
 }
 
 float calcWatts(float tempIn, float tempOut) {
@@ -1401,8 +1444,6 @@ void addAirTemp()
     air.add(FtoI(float(thermistorAir.readTempF(ntcAirSetting.pin)) + ntcAirSetting.offset));
 }
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "UnusedParameter"
 bool mqttHeatOnHandler(const HomieRange& range, const String& value)
 {
     if (value != "true" && value != "false") return false;
@@ -1412,22 +1453,19 @@ bool mqttHeatOnHandler(const HomieRange& range, const String& value)
         overrideEnv = true;
         manualHeatingEnable = true;
         manualHeating = true;
-        turnHeatOn();
+        heatOn();
     }else{
         overrideEnv = false;
         manualHeatingEnable = false;
         manualHeating = false;
-        turnHeatOff();
+        heatOff();
     }
     statusNode.setProperty("heating").send(value);
     Homie.getLogger() << "MQTT Pump is forced " << (on ? "on" : "off") << endl;
 
     return true;
 }
-#pragma clang diagnostic pop
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "UnusedParameter"
 bool configNodeInputHandler(const HomieRange& range, const String& property, const String& value)
 {
     Homie.getLogger() << "Config Node Input >> Property: " << property << " Value: " << value << endl;
@@ -1601,12 +1639,146 @@ bool configNodeInputHandler(const HomieRange& range, const String& property, con
 
     return true;
 }
-#pragma clang diagnostic pop
+
+void displayCenterMessage(const char * str) {
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setTextSize(2);
+    tft.setTextColor(ILI9341_WHITE);
+
+    tft.setCursor(0, tft.height() / 2);
+    tft.println(str);
+}
+
+void displayCenterMessage(std::string str) {
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setTextSize(2);
+    tft.setTextColor(ILI9341_WHITE);
+
+    tft.setCursor(0, tft.height() / 2);
+    tft.println(str.c_str());
+}
+
+void displayPageMain()
+{
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_LT_BLUE);
+    tft.setCursor(0, 0);
+
+    tft.println("Status:");
+    tft.println("");
+    tft.println("");
+    tft.println("Pump:    ");
+    tft.println("Propane: ");
+    tft.println("");
+    tft.println("Pool: ");
+    tft.println("TIn : ");
+    tft.println("TOut: ");
+    tft.println("Air : ");
+    tft.println("");
+    tft.println("Post: ");
+
+    displayPageMainUpdate();
+}
+
+void displayPageMainUpdate() {
+    int16_t x1 = 0;
+    int16_t y1 = 0;
+    uint16_t w = 0;
+    uint16_t h = 0;
+
+    tft.setTextSize(3);
+    tft.setTextColor(ILI9341_WHITE);
+
+    tft.getTextBounds("0", 0, 0 , &x1, &y1, &w, &h); // Just to get character size
+
+    // Status
+    tft.fillRect(w, h, tft.width(), h, ILI9341_BLACK);
+    tft.setCursor(0, h);
+    tft.print(status.get());
+
+    // Pump
+    tft.fillRect(w*9, h*3, tft.width(), h, ILI9341_BLACK);
+    tft.setCursor(w*9, h*3);
+    tft.print(boolToStr(pumpOn));
+
+    // Propane
+    tft.fillRect(w*9, h*4, tft.width(), h, ILI9341_BLACK);
+    tft.setCursor(w*9, h*4);
+    tft.print(boolToStr(propaneOn));
+
+    // Pool
+    tft.fillRect(w*6, h*6, tft.width(), h, ILI9341_BLACK);
+    tft.setCursor(w*6, h*6);
+    tft.printf("%.1f", ItoF(pool.get()));
+
+    // Temp IN
+    tft.fillRect(w*6, h*7, tft.width(), h, ILI9341_BLACK);
+    tft.setCursor(w*6, h*7);
+    tft.printf("%.1f", ItoF(tin.get()));
+
+    // Temp OUT
+    tft.fillRect(w*6, h*8, tft.width(), h, ILI9341_BLACK);
+    tft.setCursor(w*6, h*8);
+    tft.printf("%.1f", ItoF(tout.get()));
+
+    // Air
+    tft.fillRect(w*6, h*9, tft.width(), h, ILI9341_BLACK);
+    tft.setCursor(w*6, h*9);
+    tft.printf("%.1f", ItoF(air.get()));
+
+    // Last post
+    tft.fillRect(0, h*12, tft.width(), tft.height(), ILI9341_BLACK);
+    tft.setCursor(0, h*12);
+    tft.setTextSize(2);
+    tft.println(getTimestamp(false));
+}
+
+void displayPageInfo()
+{
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setTextSize(2);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(0, 0);
+
+    tft.printf("Pool:  %.1f\n", ItoF(pool.get()));
+    tft.printf("T-In:  %.1f\n", ItoF(tin.get()));
+    tft.printf("T-Out: %.1f\n", ItoF(tout.get()));
+    tft.printf("Air: %.1f\n", ItoF(air.get()));
+    tft.printf("Light: %d\n", light.get());
+    tft.printf("SP: %.1f\n", poolConfigSetPointSetting.get());
+    tft.printf("Swing: %.1f\n", poolConfigSetPointSwingSetting.get());
+    tft.printf("Az: %.4f\n", solar.azimuth);
+    tft.printf("Elv: %.4f\n", solar.elevation);
+    tft.printf("Watts: %d\n", watts.get());
+    tft.printf("Cloudy: %s\n", boolToStr(isCloudy));
+    tft.printf("Overcast: %s\n", boolToStr(isOvercast));
+    tft.printf("At SP: %s\n", boolToStr(atSetpoint));
+    tft.printf("Env Override: %s\n", boolToStr(overrideEnv));
+    tft.printf("IP: %s\n", ip);
+    tft.printf("Version: %s\n", VERSION);
+    tft.printf("Status: %s\n", status.get());
+}
+
+void displayPageConfig() {
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setTextSize(2);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(0, 0);
+
+    tft.println("CONFIG");
+    tft.println("");
+    tft.println("Long press:");
+    tft.println("calibrate something");
+    tft.println("");
+    tft.println("Double click:");
+    tft.println("calibrate something else");
+}
 
 void setupButtons() {
     InterruptButton::setMenuCount(MenuPage::MENU_LAST_NUM_OF_PAGES);
     InterruptButton::setMenuLevel(MenuPage::MENU_MAIN);
-    InterruptButton::setMode(Mode_Asynchronous);
+    InterruptButton::setMode(Mode_Synchronous);
 
     button1.bind(Event_KeyPress, MenuPage::MENU_MAIN, &menuMainBtn1KeyPress);
     button1.bind(Event_DoubleClick, MenuPage::MENU_MAIN, &menuMainBtn1DblClick);
@@ -1659,110 +1831,16 @@ void menuConfigBtn1KeyPress(void) {
 
 void menuConfigBtn1LongPress(void) {
     Serial.printf("Menu CONFIG, Button 1: Long Key Press:              %lu ms\n", millis());
-    //todo-evo: Finish me
+    Serial.println("Heat Pump");
+    digitalWrite(HEAT_RLY_PIN, HIGH);
+    delay(1000);
+    digitalWrite(HEAT_RLY_PIN, LOW);
 }
 
 void menuConfigBtn1DblClick(void) {
     Serial.printf("Menu CONFIG, Button 1: Double Click:              %lu ms\n", millis());
-    //todo-evo: Finish me
-}
-
-void displayBooting() {
-    display.clearBuffer();
-    display.setTextSize(3);
-    display.setTextColor(EPD_BLACK);
-
-    display.setCursor(0, 80);
-    display.println("Booting...");
-
-    display.display();
-}
-
-void displayPageMain() {
-    display.clearBuffer();
-    display.setTextSize(3);
-    display.setTextColor(EPD_BLACK);
-    const int16_t val_x = 78;
-    const int16_t line_y = 26;
-
-    display.setCursor(0, 0);
-    display.println("OFF");
-//    display.println("EXTRA");
-
-    display.setCursor(0, line_y * 2);
-    display.print("Pool");
-    display.setCursor(val_x, line_y * 2);
-    display.print("100.5");
-
-    display.setCursor(0, line_y * 3);
-    display.print("In");
-    display.setCursor(val_x, line_y * 3);
-    display.print("75.2");
-
-    display.setCursor(0, line_y * 4);
-    display.print("Out");
-    display.setCursor(val_x, line_y * 4);
-    display.print("100.5");
-
-    display.setCursor(0, line_y * 5);
-    display.print("Air");
-    display.setCursor(val_x, line_y * 5);
-    display.print("88.6");
-
-    display.display();
-}
-
-void displayPageInfo() {
-    display.clearBuffer();
-    display.setTextSize(2);
-    display.setTextColor(EPD_BLACK);
-    display.setCursor(0, 0);
-
-    display.print("Light: ");
-    display.println("3826");
-
-    display.print("SP: ");
-    display.println("92");
-
-    display.print("Swing: ");
-    display.println("1");
-
-    display.print("Az: ");
-    display.println("110.96");
-
-    display.print("Elv: ");
-    display.println("53.30");
-
-    display.print("Watts: ");
-    display.println("47235.5");
-
-    display.print("Cloudy: ");
-    display.println("Yes");
-
-    display.print("Over Cast: ");
-    display.println("Yes");
-
-    display.print("At SP: ");
-    display.println("No");
-
-    display.print("Env Ovrd: ");
-    display.println("Yes");
-
-    display.display();
-}
-
-void displayPageConfig() {
-    display.clearBuffer();
-    display.setTextSize(2);
-    display.setTextColor(EPD_BLACK);
-    display.setCursor(0, 0);
-
-    display.println("CONFIG");
-    display.println("");
-    display.println("Long press:");
-    display.println("calibrate something");
-    display.println("");
-    display.println("Double click:");
-    display.println("calibrate something else");
-    display.display();
+    Serial.println("Aux Pump");
+    digitalWrite(AUX_RLY_PIN, HIGH);
+    delay(1000);
+    digitalWrite(AUX_RLY_PIN, LOW);
 }

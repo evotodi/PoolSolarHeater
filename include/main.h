@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include <Arduino.h>
 #include <Esp.h>
 #include <WiFiUdp.h>
@@ -17,14 +18,14 @@
 #include <Oversampling.h>
 #include <SolarCalculator.h>
 #include <Smoothed.h>
-#include "PoolSetting.h"
-#include "PoolValidation.h"
-#include "Adafruit_ThinkInk.h"
+#include <PoolSetting.hpp>
+#include <PoolValidation.h>
 #include <SPI.h>
 #include "InterruptButton.h"
-#include "Adafruit_ThinkInk.h"
+#include "Adafruit_GFX.h"
+#include <Adafruit_ILI9341.h>
 
-#define VERSION "1.1.25"
+#define VERSION "2.1.63"
 
 // Debugging Defines >>>
 #define DEBUG 1
@@ -50,14 +51,16 @@
 #define DS_TEMP_PRECISION 12
 
 // ESP32 Usable Pins
-#define LED_BUILTIN     2
+#ifndef LED_BUILTIN
+#  define LED_BUILTIN     2
+#endif
 #define PIN_AUX_4_SP    4 // SPARE Strapping
 #define MCP_CS          5
 #define ONE_WIRE_BUS    13
 #define BTN2_PIN        14 // Button 2
-#define DISP_EPD_CS     15
-#define DISP_EPD_RESET  16
-#define DISP_SDCS       17 // Used when using the sd card on disp
+#define TFT_CS          15
+#define TFT_RST         16
+#define PIN_AUX_17      17
 #define SPI_CLK         18 // MCP_CLK, DISP_SCK
 #define SPI_MISO        19 // MCP_DOUT, DISP_MISO
 #define LED_PIN         21
@@ -66,9 +69,9 @@
 #define PUMP_RLY_PIN    25
 #define HEAT_RLY_PIN    26
 #define AUX_RLY_PIN     27
-#define DISP_SRAM_CS    32
-#define DISP_EPD_DC     33
-#define DISP_EPD_BUSY   34
+#define TFT_LED         32
+#define TFT_DC          33
+#define PIN_AUX_34      34
 #define BTN1_PIN        35
 #define PIN_AUX_36_I    36 // SPARE Input Only
 #define PIN_AUX_39_I    39 // SPARE Input Only
@@ -80,8 +83,11 @@
 #define ADC_AUX        3
 
 #define MAX_JSON_CONFIG_ARDUINOJSON_BUFFER_SIZE 1024
-
 #define CONFIG_PATH "/pool/config.json"
+#define LOOP_DAT_DLY          (5*1E3)
+
+// Colors
+#define TFT_LT_BLUE 0xBDFF
 
 //>> Structures
 struct DTSetting
@@ -147,8 +153,8 @@ void parseDTSettings(DTSetting * pDTSetting, const char * settings, double offse
 #ifdef LOG_TO_TELNET
 void handleTelnet();
 void printHelp();
-void onHomieEvent(const HomieEvent& event);
 #endif
+void onHomieEvent(const HomieEvent& event);
 void toggleOverrideEnv();
 void toggleManualHeatingEnable();
 void toggleManualHeating();
@@ -159,25 +165,34 @@ void toggleEnvNoCheckTDiff();
 void getSolar(Solar * pSolar);
 void getDaylight(Daylight * pDaylight);
 void doProcess();
-bool turnHeatOn();
-bool turnHeatOff();
+bool heatOn();
+bool heatOff();
+void setPumpOn();
+void setPumpOff();
+void setPropaneOn();
+void setPropaneOff();
+void setAuxOn();
+void setAuxOff();
 float calcWatts(float tempIn, float tempOut);
 bool envAllowHeat();
 void calibratePoolTemps();
 void calibrationReset();
-bool configLoad();
-void configRead();
-void configSetPoolSettings(JsonObject settingsObject, std::vector<PoolInternals::IPoolSetting*> * settings);
-void configLogSettings(const char * name, std::vector<PoolInternals::IPoolSetting*> * settings);
-void configWrite();
-void configUpdateStructs();
+
 float ItoF(int val);
 String ItoS(int val);
 int FtoI(float val);
+
 void addPoolTemp();
 void addAirTemp();
 bool mqttHeatOnHandler(const HomieRange& range, const String& value);
 bool configNodeInputHandler(const HomieRange& range, const String& property, const String& value);
+
+bool configLoad();
+void configRead();
+void configWrite();
+void configSetPoolSettings(JsonObject settingsObject, std::vector<PoolInternals::IPoolSetting*> * settings);
+void configLogSettings(const char * name, std::vector<PoolInternals::IPoolSetting*> * settings);
+void configUpdateStructs();
 
 void setupButtons();
 void menuMainBtn1KeyPress(void);
@@ -186,8 +201,10 @@ void menuConfigBtn1KeyPress(void);
 void menuConfigBtn1LongPress(void);
 void menuConfigBtn1DblClick(void);
 
-void displayBooting();
+void displayCenterMessage(const char * str);
+void displayCenterMessage(std::string str);
 void displayPageMain();
+void displayPageMainUpdate();
 void displayPageInfo();
 void displayPageConfig();
 //<< Function Prototypes

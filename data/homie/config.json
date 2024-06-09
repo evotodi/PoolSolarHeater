@@ -1,6 +1,6 @@
 {
-    "name": "PoolHeater",
-    "device_id": "poolheater",
+    "name": "PoolHeaterTest",
+    "device_id": "poolheatertest",
     "device_stats_interval": 300,
     "wifi": {
       "ssid": "DavisIot",
