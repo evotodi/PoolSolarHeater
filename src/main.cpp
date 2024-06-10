@@ -17,8 +17,6 @@ WiFiClient Telnet;
 #endif
 
 MCP3204 mcp(&SPI);
-char timestampStrBuf[1024];
-EasyStringStream timestampStream(timestampStrBuf, 1024);
 Oversampling adc(10, 12, 2);
 
 InterruptButton button1(BTN1_PIN, LOW);
@@ -49,6 +47,7 @@ PoolSetting<double> poolConfigSunMinElvAMSetting("sunMinElvAM", "Sun Min Elv AM"
 PoolSetting<double> poolConfigSunMinElvPMSetting("sunMinElvPM", "Sun Min Elv PM", &PoolInternals::IPoolSetting::settingsConfig);
 PoolSetting<double> poolConfigSetPointSetting("setPoint", "Set Point", &PoolInternals::IPoolSetting::settingsConfig);
 PoolSetting<double> poolConfigSetPointSwingSetting("setPointSwing", "Set Point Swing", &PoolInternals::IPoolSetting::settingsConfig);
+PoolSetting<double> poolConfigAuxHeatDiffSetting("auxHeatTempDiff", "Aux Heat Diff", &PoolInternals::IPoolSetting::settingsConfig);
 PoolSetting<double> poolConfigAirPoolDiffSetting("airPoolDiff", "Air Pool Diff", &PoolInternals::IPoolSetting::settingsConfig);
 PoolSetting<uint16_t> poolConfigPoolTempInSetting("poolTempIn", "Pool Temp Input", &PoolInternals::IPoolSetting::settingsConfig); // 0 = tin 1 = ntc
 PoolSetting<double> poolConfigPumpGpmSetting("pumpGpm", "Pump GPM", &PoolInternals::IPoolSetting::settingsConfig);
@@ -98,6 +97,7 @@ bool envCheckNoSolar = false;
 bool envCheckNoAir = false;
 bool envCheckNoCloud = false;
 bool envCheckNoTDiff = false;
+bool envCheckNoAuxHeatDiff = false;
 bool otaInProgress = false;
 bool firstRun = true;
 
@@ -105,9 +105,13 @@ int telnetBuffer;
 Smoothed<int16_t> light;
 uint16_t cloudyCnt = 0;
 Smoothed<int> tin;
+bool tinOk = true;
 Smoothed<int> tout;
+bool toutOk = true;
 Smoothed<int> air;
+bool airOk = true;
 Smoothed<int> pool;
+bool poolOk = true;
 Smoothed<int> watts;
 auto solar = Solar{};
 auto daylight = Daylight{};
@@ -115,16 +119,17 @@ char statusBuffer[1024];
 EasyStringStream status(statusBuffer, 1024);
 DisplayPage displayPage = DisplayPage::DISP_MAIN;
 char ip[17] = "\0";
-char runStatus[15] = "Off\0";
+RunStatus runStatus = RunStatus::OFF;
 bool pumpOn = false;
 bool propaneOn = false;
 bool auxOn = false;
+time_t lastPublishData = 0;
 
 void setup()
 {
     pinMode(LED_PIN, OUTPUT);
     pinMode(PUMP_RLY_PIN, OUTPUT);
-    pinMode(HEAT_RLY_PIN, OUTPUT);
+    pinMode(AUX_HEAT_RLY_PIN, OUTPUT);
     pinMode(AUX_RLY_PIN, OUTPUT);
     pinMode(BTN1_PIN, INPUT);
     // pinMode(BTN2_PIN, INPUT);
@@ -206,6 +211,7 @@ void setup()
     configNode.advertise("sunMinElvPM").setName("Sun Min Elv PM").setDatatype("float").setUnit("°").settable();
     configNode.advertise("setPoint").setName("Set Point").setDatatype("float").setUnit("°F").settable();
     configNode.advertise("setPointSwing").setName("Set Point Swing").setDatatype("float").setUnit("°F").settable();
+    configNode.advertise("auxHeatTempDiff").setName("AuxHeat Diff").setDatatype("float").setUnit("°F").settable();
     configNode.advertise("airPoolDiff").setName("Air Pool Diff").setDatatype("float").setUnit("°F").settable();
     configNode.advertise("poolTempIn").setName("Pool Temp In").setDatatype("integer").setUnit("°F").settable();
     configNode.advertise("airOffset").setName("Air Offset").setDatatype("float").setUnit("°F").settable();
@@ -319,6 +325,7 @@ void loopHandler()
             }
 
             sensors.requestTemperatures();
+            button1.processSyncEvents();
             delay(100);
 
             tin.add(FtoI(sensors.getTempF(tempSensorIn) + tinSettings.offset));
@@ -376,6 +383,9 @@ void loopHandler()
 
             Homie.getLogger() << endl;
 
+            checkTempSensors();
+
+            button1.processSyncEvents();
             if (displayPage == DisplayPage::DISP_MAIN) {
                 displayPageMainUpdate();
             } else if (displayPage == DisplayPage::DISP_INFO) {
@@ -385,23 +395,26 @@ void loopHandler()
             previousMillisData = currentMillis;
         }
         yield();
+        button1.processSyncEvents();
 
         // Process data
         if (currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) {
             Homie.getLogger() << "PROCESS:" << endl;
 
+            button1.processSyncEvents();
             doProcess();
 
             Homie.getLogger() << endl;
             previousMillisProc = currentMillis;
         }
         yield();
+        button1.processSyncEvents();
 
         // Publish data
         if (currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
             Homie.getLogger() << "PUBLISH:" << endl;
             delay(100); //This is needed to allow time to publish
-            statusNode.setProperty("timestamp").send(getTimestamp(true));
+            statusNode.setProperty("timestamp").send(getTimestamp(true).c_str());
             statusNode.setProperty("heating").send(isHeating ? "true" : "false");
             statusNode.setProperty("at_setpoint").send(atSetpoint ? "true" : "false");
             statusNode.setProperty("cloudy").send(isCloudy ? "true" : "false");
@@ -409,7 +422,9 @@ void loopHandler()
             statusNode.setProperty("env_override").send(overrideEnv ? "true" : "false");
             statusNode.setProperty("man_heat").send(manualHeating ? "true" : "false");
             statusNode.setProperty("status").send(status.get());
+            Homie.getLogger() << "Status: " << status.get() << endl;
             yield();
+            button1.processSyncEvents();
 
             delay(100); //This is needed to allow time to publish
             valuesNode.setProperty("tin").send(ItoS(tin.get()));
@@ -424,14 +439,19 @@ void loopHandler()
 
             Homie.getLogger() << "Published data" << endl;
             Homie.getLogger() << endl;
+
+            lastPublishData = now();
             previousMillisPub = currentMillis;
         }
         yield();
+        button1.processSyncEvents();
 
         // Publish Config
         if (currentMillis - previousMillisPubCfg > intervalPubCfg || previousMillisPubCfg == 0) {
             Homie.getLogger() << "PUBLISH CONFIG:" << endl;
+            button1.processSyncEvents();
             delay(100); //This is needed to allow time to publish
+            button1.processSyncEvents();
 
             configNode.setProperty("cloudy").send(String(poolConfigCloudySetting.get()));
             configNode.setProperty("overcastCnt").send(String(poolConfigOvercastCntSetting.get()));
@@ -452,6 +472,7 @@ void loopHandler()
             previousMillisPubCfg = currentMillis;
         }
         yield();
+        button1.processSyncEvents();
     }
     // Update Daylight
     if (currentMillis - previousMillisDaylight > intervalDayLight || previousMillisDaylight == 0) {
@@ -740,6 +761,7 @@ void configWrite()
     config["sunMinElvPM"] = poolConfigSunMinElvPMSetting.get();
     config["setPoint"] = poolConfigSetPointSetting.get();
     config["setPointSwing"] = poolConfigSetPointSwingSetting.get();
+    config["auxHeatTempDiff"] = poolConfigAuxHeatDiffSetting.get();
     config["airPoolDiff"] = poolConfigAirPoolDiffSetting.get();
     config["poolTempIn"] = poolConfigPoolTempInSetting.get();
     config["pumpGpm"] = poolConfigPumpGpmSetting.get();
@@ -851,72 +873,45 @@ int getTimeOffset(const time_t * t, bool asHours)
     }
 }
 
-const char *getTimestamp(bool withOffset)
+std::string getTimestamp(bool withOffset, bool human, time_t ts)
 {
     time_t tNow = now();
+    if (ts != 0) {
+        tNow = ts;
+    }
+
     int offsetHours = getTimeOffset(&tNow, true);
 
     if(withOffset){
         tNow = tNow + (offsetHours * 60 * 60);
     }
 
-    timestampStream.reset();
-    timestampStream << String(year(tNow)) << "-";
+    char cDate[32] = "\0"; // Date ends at element 12
+    char cYear[5]   = "\0";
+    char cTime[18]   = "\0";
 
-    if (month() < 10) {
-        timestampStream << "0" << String(month(tNow));
+    if (human) {
+        sprintf(cYear, "%04d", year(tNow));
+        sprintf(cDate, "%0d/%0d/%c%c ", month(tNow), day(tNow), cYear[2], cYear[3]);
+        sprintf(cTime, "%02d:%02d:%02d", hour(tNow), minute(tNow), second(tNow));
     } else {
-        timestampStream << String(month(tNow));
-    }
-
-    timestampStream << "-";
-
-    if (day() < 10) {
-        timestampStream << "0" << String(day(tNow));
-    } else {
-        timestampStream << String(day(tNow));
-    }
-
-    timestampStream << "T";
-
-    if (hour() < 10) {
-        timestampStream << "0" << String(hour(tNow));
-    } else {
-        timestampStream << String(hour(tNow));
-    }
-
-    timestampStream << ":";
-
-    if (minute() < 10) {
-        timestampStream << "0" << String(minute(tNow));
-    } else {
-        timestampStream << String(minute(tNow));
-    }
-
-    timestampStream << ":";
-
-    if (second() < 10) {
-        timestampStream << "0" << String(second(tNow));
-    } else {
-        timestampStream << String(second(tNow));
-    }
-
-    if(withOffset){
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "ConstantConditionsOC"
-        if(offsetHours < 0){
-            timestampStream << ".00-0" << abs(offsetHours) << ":00";
-        }else{
-            timestampStream << ".00+0" << abs(offsetHours) << ":00";
+        sprintf(cDate, "%04d-%02d-%02dT", year(tNow), month(tNow), day(tNow));
+        if (withOffset) {
+            if(offsetHours < 0) {
+                sprintf(cTime, "%02d:%02d:%02d.00-00:00", hour(tNow), minute(tNow), second(tNow));
+            } else {
+                sprintf(cTime, "%02d:%02d:%02d.00+00:00", hour(tNow), minute(tNow), second(tNow));
+            }
+        } else {
+            sprintf(cTime, "%02d:%02d:%02d.00+00:00", hour(tNow), minute(tNow), second(tNow));
         }
-#pragma clang diagnostic pop
-
-    }else{
-        timestampStream << ".00+00:00";
     }
 
-    // Serial.println("TIMESTAMP = " + String(timestampStream.get()));
-    return timestampStream.get();
+    strcat(cDate, cTime);
+    Homie.getLogger() << "Timestamp: " << cDate << endl;
+    std::string rtn(cDate);
+
+    return rtn;
 }
 
 void strToAddress(const String &addr, DeviceAddress deviceAddress) 
@@ -1138,6 +1133,16 @@ void toggleEnvNoCheckTDiff()
     }
 }
 
+void toggleEnvNoCheckAuxHeatDiff() {
+    envCheckNoAuxHeatDiff = !envCheckNoAuxHeatDiff;
+
+    if(envCheckNoAuxHeatDiff) {
+        Homie.getLogger() << "Environment don't check aux heat diff" << endl;
+    }else{
+        Homie.getLogger() << "Environment check aux heat diff" << endl;
+    }
+}
+
 void getSolar(Solar * pSolar)
 {
     time_t utc = now();
@@ -1221,8 +1226,10 @@ bool heatOn()
     if(!isHeating){
         Homie.getLogger() << "Heat turned on" << endl;
     }
+    setRunStatus(RunStatus::SOLAR);
     setPumpOn();
     isHeating = true;
+    displayPageMainUpdate();
     return true;
 }
 
@@ -1231,8 +1238,10 @@ bool heatOff()
     if(isHeating){
         Homie.getLogger() << "Heat turned off" << endl;
     }
+    setRunStatus(RunStatus::OFF);
     setPumpOff();
     isHeating = false;
+    displayPageMainUpdate();
 
     return true;
 }
@@ -1247,13 +1256,13 @@ void setPumpOff() {
     pumpOn = false;
 }
 
-void setPropaneOn() {
-    digitalWrite(HEAT_RLY_PIN, HIGH);
+void setAuxHeatOn() {
+    digitalWrite(AUX_HEAT_RLY_PIN, HIGH);
     propaneOn = true;
 }
 
-void setPropaneOff() {
-    digitalWrite(HEAT_RLY_PIN, LOW);
+void setAuxHeatOff() {
+    digitalWrite(AUX_HEAT_RLY_PIN, LOW);
     propaneOn = false;
 }
 
@@ -1275,10 +1284,70 @@ float calcWatts(float tempIn, float tempOut) {
     return rtn;
 }
 
+bool checkTempSensors() {
+    poolOk = true;
+    tinOk = true;
+    toutOk = true;
+    airOk = true;
+#ifdef NO_CHECK_SENSORS_OK
+    return true;
+#endif
+    if (pool.get() <= T_SENSOR_BAD) poolOk = false;
+    if (tin.get() <= T_SENSOR_BAD) tinOk = false;
+    if (tout.get() <= T_SENSOR_BAD) toutOk = false;
+    if (air.get() <= T_SENSOR_BAD) airOk = false;
+
+    if (poolOk && tinOk && toutOk && airOk) return true;
+
+    setRunStatus(RunStatus::ERROR, true);
+    return false;
+}
+
+void setRunStatus(RunStatus rs, bool force) {
+    if (runStatus == RunStatus::ERROR) {
+        if (force) {
+            runStatus = rs;
+        }
+        return;
+    }
+
+    runStatus = rs;
+}
+
+const char * getRunStatusStr() {
+    switch (runStatus) {
+        case OFF:
+            return "Off";
+            break;
+        case SOLAR:
+            return "Solar";
+            break;
+        case PROPANE:
+            return "Heat";
+            break;
+        case MANUAL_SOLAR:
+            return "Manual Solar";
+            break;
+        case MANUAL_PROPANE:
+            return "Manual Heat";
+            break;
+        case ERROR:
+            return "ERROR";
+            break;
+    }
+
+    return "ERROR";
+}
+
 bool envAllowHeat()
 {
     bool rtn = true;
     status.reset();
+
+    if (!poolOk) status << "SENSOR: Pool error\n";
+    if (!tinOk) status << "SENSOR: Temp in error\n";
+    if (!toutOk) status << "SENSOR: Temp out error\n";
+    if (!airOk) status << "SENSOR: Air error\n";
 
     if(overrideEnv){
         Homie.getLogger() << "Env: Override enabled !" << endl;
@@ -1351,7 +1420,7 @@ bool envAllowHeat()
 //    Homie.getLogger() << "Env: Skip tin to tout diff check by define" << endl;
 //#endif
 
-    if(status.getLength() == 0) {
+    if(status.getCursor() == 0) {
         status << "ok";
     }
 
@@ -1671,67 +1740,114 @@ void displayPageMain()
     tft.println("Pump:    ");
     tft.println("Propane: ");
     tft.println("");
-    tft.println("Pool: ");
-    tft.println("TIn : ");
-    tft.println("TOut: ");
-    tft.println("Air : ");
-    tft.println("");
+    tft.println("Pool : ");
+    tft.println("TIn  : ");
+    tft.println("TOut : ");
+    tft.println("Air  : ");
+    tft.println("Watts: ");
     tft.println("Post: ");
 
     displayPageMainUpdate();
 }
 
 void displayPageMainUpdate() {
+    if (displayPage != DisplayPage::DISP_MAIN) return;
+
     int16_t x1 = 0;
     int16_t y1 = 0;
     uint16_t w = 0;
     uint16_t h = 0;
 
     tft.setTextSize(3);
-    tft.setTextColor(ILI9341_WHITE);
+    tft.setTextColor(TFT_WHITE);
 
     tft.getTextBounds("0", 0, 0 , &x1, &y1, &w, &h); // Just to get character size
 
     // Status
-    tft.fillRect(w, h, tft.width(), h, ILI9341_BLACK);
+    tft.fillRect(0, h, tft.width(), h, TFT_BLACK);
     tft.setCursor(0, h);
-    tft.print(status.get());
+    if (runStatus == RunStatus::ERROR) {
+        tft.setTextColor(TFT_PINK);
+    }
+    tft.print(getRunStatusStr());
+    tft.setTextColor(TFT_WHITE);
 
     // Pump
-    tft.fillRect(w*9, h*3, tft.width(), h, ILI9341_BLACK);
+    tft.fillRect(w*9, h*3, tft.width(), h, TFT_BLACK);
     tft.setCursor(w*9, h*3);
+    if (pumpOn) {
+        tft.setTextColor(TFT_GREEN);
+    } else {
+        tft.setTextColor(TFT_YELLOW);
+    }
     tft.print(boolToStr(pumpOn));
+    tft.setTextColor(TFT_WHITE);
 
     // Propane
-    tft.fillRect(w*9, h*4, tft.width(), h, ILI9341_BLACK);
+    tft.fillRect(w*9, h*4, tft.width(), h, TFT_BLACK);
     tft.setCursor(w*9, h*4);
+    if (propaneOn) {
+        tft.setTextColor(TFT_GREEN);
+    } else {
+        tft.setTextColor(TFT_YELLOW);
+    }
     tft.print(boolToStr(propaneOn));
+    tft.setTextColor(TFT_WHITE);
 
     // Pool
-    tft.fillRect(w*6, h*6, tft.width(), h, ILI9341_BLACK);
+    tft.fillRect(w*6, h*6, tft.width(), h, TFT_BLACK);
     tft.setCursor(w*6, h*6);
-    tft.printf("%.1f", ItoF(pool.get()));
+    if (!poolOk) {
+        tft.setTextColor(TFT_PINK);
+        tft.print("ERROR");
+    } else {
+        tft.printf("%.1f", ItoF(pool.get()));
+    }
+    tft.setTextColor(TFT_WHITE);
 
     // Temp IN
-    tft.fillRect(w*6, h*7, tft.width(), h, ILI9341_BLACK);
+    tft.fillRect(w*6, h*7, tft.width(), h, TFT_BLACK);
     tft.setCursor(w*6, h*7);
-    tft.printf("%.1f", ItoF(tin.get()));
+    if (!tinOk) {
+        tft.setTextColor(TFT_PINK);
+        tft.print("ERROR");
+    } else {
+        tft.printf("%.1f", ItoF(tin.get()));
+    }
+    tft.setTextColor(TFT_WHITE);
 
     // Temp OUT
-    tft.fillRect(w*6, h*8, tft.width(), h, ILI9341_BLACK);
+    tft.fillRect(w*6, h*8, tft.width(), h, TFT_BLACK);
     tft.setCursor(w*6, h*8);
-    tft.printf("%.1f", ItoF(tout.get()));
+    if (!toutOk) {
+        tft.setTextColor(TFT_PINK);
+        tft.print("ERROR");
+    } else {
+        tft.printf("%.1f", ItoF(tout.get()));
+    }
+    tft.setTextColor(TFT_WHITE);
 
     // Air
-    tft.fillRect(w*6, h*9, tft.width(), h, ILI9341_BLACK);
+    tft.fillRect(w*6, h*9, tft.width(), h, TFT_BLACK);
     tft.setCursor(w*6, h*9);
-    tft.printf("%.1f", ItoF(air.get()));
+    if (!airOk) {
+        tft.setTextColor(TFT_PINK);
+        tft.print("ERROR");
+    } else {
+        tft.printf("%.1f", ItoF(air.get()));
+    }
+    tft.setTextColor(TFT_WHITE);
+
+    // Watts
+    tft.fillRect(w*6, h*10, tft.width(), h, TFT_BLACK);
+    tft.setCursor(w*6, h*10);
+    tft.printf("%.1f", ItoF(watts.get()));
 
     // Last post
-    tft.fillRect(0, h*12, tft.width(), tft.height(), ILI9341_BLACK);
+    tft.fillRect(0, h*12, tft.width(), tft.height(), TFT_BLACK);
     tft.setCursor(0, h*12);
     tft.setTextSize(2);
-    tft.println(getTimestamp(false));
+    tft.println(getTimestamp(false, true, lastPublishData).c_str());
 }
 
 void displayPageInfo()
@@ -1748,6 +1864,7 @@ void displayPageInfo()
     tft.printf("Light: %d\n", light.get());
     tft.printf("SP: %.1f\n", poolConfigSetPointSetting.get());
     tft.printf("Swing: %.1f\n", poolConfigSetPointSwingSetting.get());
+    tft.printf("AuxHeat Diff: %.1f\n", poolConfigAuxHeatDiffSetting.get());
     tft.printf("Az: %.4f\n", solar.azimuth);
     tft.printf("Elv: %.4f\n", solar.elevation);
     tft.printf("Watts: %d\n", watts.get());
@@ -1808,6 +1925,7 @@ void menuMainBtn1KeyPress(void) {
             InterruptButton::setMenuLevel(MenuPage::MENU_MAIN);
             displayPageMain();
             displayPage = DisplayPage::DISP_MAIN;
+            displayPageMainUpdate();
     }
 }
 
@@ -1832,9 +1950,9 @@ void menuConfigBtn1KeyPress(void) {
 void menuConfigBtn1LongPress(void) {
     Serial.printf("Menu CONFIG, Button 1: Long Key Press:              %lu ms\n", millis());
     Serial.println("Heat Pump");
-    digitalWrite(HEAT_RLY_PIN, HIGH);
+    digitalWrite(AUX_HEAT_RLY_PIN, HIGH);
     delay(1000);
-    digitalWrite(HEAT_RLY_PIN, LOW);
+    digitalWrite(AUX_HEAT_RLY_PIN, LOW);
 }
 
 void menuConfigBtn1DblClick(void) {

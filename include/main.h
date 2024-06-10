@@ -34,6 +34,7 @@
 //#define NO_ENV_AIR_CHECK 1
 //#define NO_ENV_CLOUD_CHECK 1
 //#define NO_ENV_IN_OUT_DIFF_CHECK 1
+#define NO_CHECK_SENSORS_OK 1
 //#define DEBUG_FORCE_TIME 1687217416
 #define PRINT_POOL_CONFIG_ON_READ_WRITE 1
 // <<< Debugging Defines
@@ -49,32 +50,33 @@
 
 #define TELNET_PORT 23
 #define DS_TEMP_PRECISION 12
+#define T_SENSOR_BAD -500
 
 // ESP32 Usable Pins
 #ifndef LED_BUILTIN
 #  define LED_BUILTIN     2
 #endif
-#define PIN_AUX_4_SP    4 // SPARE Strapping
-#define MCP_CS          5
-#define ONE_WIRE_BUS    13
-#define BTN2_PIN        14 // Button 2
-#define TFT_CS          15
-#define TFT_RST         16
-#define PIN_AUX_17      17
-#define SPI_CLK         18 // MCP_CLK, DISP_SCK
-#define SPI_MISO        19 // MCP_DOUT, DISP_MISO
-#define LED_PIN         21
-#define PIN_AUX_22      22 // SPARE
-#define SPI_MOSI        23 // MCP_DIN, DISP_MOSI
-#define PUMP_RLY_PIN    25
-#define HEAT_RLY_PIN    26
-#define AUX_RLY_PIN     27
-#define TFT_LED         32
-#define TFT_DC          33
-#define PIN_AUX_34      34
-#define BTN1_PIN        35
-#define PIN_AUX_36_I    36 // SPARE Input Only
-#define PIN_AUX_39_I    39 // SPARE Input Only
+#define PIN_AUX_4_SP     4 // SPARE Strapping
+#define MCP_CS           5
+#define ONE_WIRE_BUS     13
+#define BTN2_PIN         14 // Button 2
+#define TFT_CS           15
+#define TFT_RST          16
+#define PIN_AUX_17       17
+#define SPI_CLK          18 // MCP_CLK, DISP_SCK
+#define SPI_MISO         19 // MCP_DOUT, DISP_MISO
+#define LED_PIN          21
+#define PIN_AUX_22       22 // SPARE
+#define SPI_MOSI         23 // MCP_DIN, DISP_MOSI
+#define PUMP_RLY_PIN     25
+#define AUX_HEAT_RLY_PIN 26
+#define AUX_RLY_PIN      27
+#define TFT_LED          32
+#define TFT_DC           33
+#define PIN_AUX_34       34
+#define BTN1_PIN         35
+#define PIN_AUX_36_I     36 // SPARE Input Only
+#define PIN_AUX_39_I     39 // SPARE Input Only
 
 // MCP3204 ADC Ports
 #define ADC_LIGHT      0
@@ -87,8 +89,13 @@
 #define LOOP_DAT_DLY          (5*1E3)
 
 // Colors
+#define TFT_WHITE 0xFFFF
+#define TFT_BLACK 0x0000
 #define TFT_LT_BLUE 0xBDFF
-
+#define TFT_RED 0xC1C7
+#define TFT_PINK 0xFAEB
+#define TFT_GREEN 0x9733
+#define TFT_YELLOW 0xEF94
 //>> Structures
 struct DTSetting
 {
@@ -136,6 +143,15 @@ enum MenuPage {
     MENU_CONFIG = 1,
     MENU_LAST_NUM_OF_PAGES = 2,
 };
+
+enum RunStatus {
+    OFF = 0,
+    SOLAR = 1,
+    PROPANE = 2,
+    MANUAL_SOLAR = 3,
+    MANUAL_PROPANE = 4,
+    ERROR = 5,
+};
 //<< Enums
 
 //>> Function Prototypes
@@ -143,7 +159,7 @@ void setupHandler();
 void loopHandler();
 time_t getNtpTime();
 int getTimeOffset(const time_t * t, bool asHours = false);
-const char* getTimestamp(bool withOffset = false);
+std::string getTimestamp(bool withOffset = false, bool human = false, time_t ts = 0);
 void strToAddress(const String& addr, DeviceAddress deviceAddress);
 void printAddress(DeviceAddress deviceAddress);
 void setupOwSensors();
@@ -162,6 +178,7 @@ void toggleEnvNoCheckSolar();
 void toggleEnvNoCheckAir();
 void toggleEnvNoCheckCloud();
 void toggleEnvNoCheckTDiff();
+void toggleEnvNoCheckAuxHeatDiff();
 void getSolar(Solar * pSolar);
 void getDaylight(Daylight * pDaylight);
 void doProcess();
@@ -169,8 +186,8 @@ bool heatOn();
 bool heatOff();
 void setPumpOn();
 void setPumpOff();
-void setPropaneOn();
-void setPropaneOff();
+void setAuxHeatOn();
+void setAuxHeatOff();
 void setAuxOn();
 void setAuxOff();
 float calcWatts(float tempIn, float tempOut);
@@ -186,6 +203,9 @@ void addPoolTemp();
 void addAirTemp();
 bool mqttHeatOnHandler(const HomieRange& range, const String& value);
 bool configNodeInputHandler(const HomieRange& range, const String& property, const String& value);
+bool checkTempSensors();
+void setRunStatus(RunStatus rs, bool force = false);
+const char * getRunStatusStr();
 
 bool configLoad();
 void configRead();

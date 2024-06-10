@@ -6,6 +6,7 @@
     "sunMinElvPM": 22.0,
     "setPoint": 92.0,
     "setPointSwing": 2.0,
+    "auxHeatTempDiff": 10.0,
     "airPoolDiff": 10.0,
     "poolTempIn": 1,
     "pumpGpm": 25.0
