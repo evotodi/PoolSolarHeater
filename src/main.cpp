@@ -327,11 +327,9 @@ void loopHandler()
             sensors.requestTemperatures();
             button1.processSyncEvents();
             delay(100);
-
-            tin.add(FtoI(sensors.getTempF(tempSensorIn) + tinSettings.offset));
-
+            addTInTemp();
             yield();
-            tout.add(FtoI(sensors.getTempF(tempSensorOut) + toutSettings.offset));
+            addTOutTemp();
             yield();
 
             Homie.getLogger() << "Tin = " << ItoF(tin.getLast()) << " °F  Tin Smooth = " << ItoF(tin.get()) << " °F " << endl;
@@ -354,7 +352,7 @@ void loopHandler()
             Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F" << endl;
             yield();
 
-            light.add(mcp.read(ADC_LIGHT));
+            addLight();
             if (light.get() <= poolConfigCloudySetting.get()) {
                 isCloudy = true;
                 cloudyCnt++;
@@ -371,14 +369,15 @@ void loopHandler()
                 cloudyCnt = poolConfigOvercastCntSetting.get();
             }
 
-            Homie.getLogger() << "Light level = " << light.getLast() << " Light smoothed = " << light.get() << " Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << endl;
+            Homie.getLogger() << "Light level = " << light.getLast() << " Light smoothed = " << light.get() << endl;
+            Homie.getLogger() << "Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << " Cloudy Count = " << cloudyCnt << endl;
             yield();
 
             getSolar(&solar);
             Homie.getLogger() << "Solar Azimuth = " << solar.azimuth << "° Elevation = " << solar.elevation << "°" << endl;
             yield();
 
-            Homie.getLogger() << "At setpoint = " << boolToStr(atSetpoint) << "  Heating = " << boolToStr(isHeating) << endl;
+            Homie.getLogger() << "At setpoint = " << boolToStr(atSetpoint) << "  Heating = " << boolToStr(isHeating) << " Heat Type = " << getRunStatusStr() << endl;
             yield();
 
             Homie.getLogger() << endl;

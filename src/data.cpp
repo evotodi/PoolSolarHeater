@@ -35,22 +35,25 @@ void getDaylight(Daylight * pDaylight)
     time_t t = makeTime(tm);
     pDaylight->midday = t + long(round(60 * 60 * md));
 
-//#ifdef DEBUG
-//    Serial.print("Daylight Time: ");
-//    Serial.println(utc);
-//    Serial.print(F("Sun Rise: "));
-//    Serial.print(pDaylight->sunrise);
-//    Serial.print(F("  Sun Set: "));
-//    Serial.print(pDaylight->sunset);
-//    Serial.print(F("  Transit: "));
-//    Serial.println(pDaylight->transit);
-//    Serial.print(F("Mid: "));
-//    Serial.println(pDaylight->midday);
-//#endif
+#ifdef DEBUG
+    Serial.print("Daylight Time: ");
+    Serial.println(utc);
+    Serial.print(F("Sun Rise: "));
+    Serial.print(pDaylight->sunrise);
+    Serial.print(F("  Sun Set: "));
+    Serial.print(pDaylight->sunset);
+    Serial.print(F("  Transit: "));
+    Serial.println(pDaylight->transit);
+    Serial.print(F("Mid: "));
+    Serial.println(pDaylight->midday);
+#endif
 }
 
 void addPoolTemp()
 {
+#ifdef FAKE_TEMP_POOL
+    pool.add(FAKE_TEMP_POOL + ntcPoolSetting.offset);
+#else
     if(poolConfigPoolTempInSetting.get() == 0) {
         pool.add(tin.getLast());
     } else if(poolConfigPoolTempInSetting.get() == 1) {
@@ -58,11 +61,43 @@ void addPoolTemp()
     }else{
         Homie.getLogger() << F("✖ Invalid poolTemp type: ") << poolConfigPoolTempInSetting.get() << endl;
     }
+#endif
 }
 
 void addAirTemp()
 {
+#ifdef FAKE_TEMP_AIR
+    air.add(FAKE_TEMP_AIR + ntcAirSetting.offset);
+#else
     air.add(FtoI(float(thermistorAir.readTempF(ntcAirSetting.pin)) + ntcAirSetting.offset));
+#endif
+}
+
+void addTInTemp()
+{
+#ifdef FAKE_TEMP_TIN
+    tin.add(FAKE_TEMP_TIN + tinSettings.offset);
+#else
+    tin.add(FtoI(sensors.getTempF(tempSensorIn) + tinSettings.offset));
+#endif
+}
+
+void addTOutTemp()
+{
+#ifdef FAKE_TEMP_TOUT
+    tout.add(FAKE_TEMP_TOUT + toutSettings.offset);
+#else
+    tout.add(FtoI(sensors.getTempF(tempSensorOut) + toutSettings.offset));
+#endif
+}
+
+void addLight()
+{
+#ifdef FAKE_LIGHT
+    light.add(FAKE_LIGHT);
+#else
+    light.add(mcp.read(ADC_LIGHT));
+#endif
 }
 
 bool checkTempSensors() {

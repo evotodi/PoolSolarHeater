@@ -1,7 +1,7 @@
 {
   "config": {
     "cloudy": 3550,
-    "overcastCnt": 20,
+    "overcastCnt": 200,
     "sunMinElvAM": 50.0,
     "sunMinElvPM": 22.0,
     "setPoint": 92.0,

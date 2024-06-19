@@ -9,11 +9,23 @@
 #include <SolarCalculator.h>
 #include <TimeLib.h>
 
+// Debugging Defines >>>
+// The FAKE_TEMP_XXX values are for example 92.5 = 925
+#define FAKE_TEMP_POOL 925
+#define FAKE_TEMP_TIN 925
+#define FAKE_TEMP_TOUT 973
+#define FAKE_TEMP_AIR 834
+#define FAKE_LIGHT 4500
+// <<< Debugging Defines
+
 void getSolar(Solar * pSolar);
 void getDaylight(Daylight * pDaylight);
 
 void addPoolTemp();
 void addAirTemp();
+void addTInTemp();
+void addTOutTemp();
+void addLight();
 
 bool checkTempSensors();
 
