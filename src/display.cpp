@@ -91,6 +91,11 @@ void displayPageMainUpdate() {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");
     } else {
+        if (ItoF(pool.get()) < settingPoolSP.get()) {
+            tft.setTextColor(TFT_YELLOW);
+        } else {
+            tft.setTextColor(TFT_GREEN);
+        }
         tft.printf("%.1f", ItoF(pool.get()));
     }
     tft.setTextColor(TFT_WHITE);
@@ -113,6 +118,11 @@ void displayPageMainUpdate() {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");
     } else {
+        if (toutSolar.get() < pool.get()) {
+            tft.setTextColor(TFT_YELLOW);
+        } else {
+            tft.setTextColor(TFT_GREEN);
+        }
         tft.printf("%.1f", ItoF(toutSolar.get()));
     }
     tft.setTextColor(TFT_WHITE);
@@ -124,6 +134,11 @@ void displayPageMainUpdate() {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");
     } else {
+        if (toutHeat.get() < pool.get()) {
+            tft.setTextColor(TFT_YELLOW);
+        } else {
+            tft.setTextColor(TFT_GREEN);
+        }
         tft.printf("%.1f", ItoF(toutHeat.get()));
     }
     tft.setTextColor(TFT_WHITE);
@@ -135,6 +150,11 @@ void displayPageMainUpdate() {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");
     } else {
+        if (air.get() < pool.get()) {
+            tft.setTextColor(TFT_YELLOW);
+        } else {
+            tft.setTextColor(TFT_GREEN);
+        }
         tft.printf("%.1f", ItoF(air.get()));
     }
     tft.setTextColor(TFT_WHITE);
@@ -142,7 +162,13 @@ void displayPageMainUpdate() {
     // Watts
     tft.fillRect(w * 6, h * 10, tft.width(), h, TFT_BLACK);
     tft.setCursor(w * 6, h * 10);
+    if (ItoF(watts.get()) < DISPLAY_LOW_WATTS) {
+        tft.setTextColor(TFT_YELLOW);
+    } else {
+        tft.setTextColor(TFT_GREEN);
+    }
     tft.printf("%.1f", ItoF(watts.get()));
+    tft.setTextColor(TFT_WHITE);
 
     // Last post
     tft.fillRect(0, h * 12, tft.width(), tft.height(), TFT_BLACK);

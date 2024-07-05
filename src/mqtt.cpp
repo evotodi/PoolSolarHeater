@@ -65,6 +65,11 @@ bool configNodeInputHandler(const HomieRange &range, const String &property, con
             return false;
         }
 
+        if (tempFloat < settingHeatAuxSP.get()) {
+            Homie.getLogger() << "Pool SP is < Heat SP ! Pool SP changed to Heat SP" << endl;
+            tempFloat = settingHeatAuxSP.get();
+        }
+
         settingPoolSP.set(tempFloat);
         doWrite = true;
         Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;
@@ -76,7 +81,10 @@ bool configNodeInputHandler(const HomieRange &range, const String &property, con
             Homie.getLogger() << F("✖ Conversion error for ") << property << " with value of " << value << endl;
             return false;
         }
-
+        if (tempFloat > settingPoolSP.get()) {
+            Homie.getLogger() << "Heat SP is > Pool SP ! Heat SP changed to Pool SP" << endl;
+            tempFloat = settingPoolSP.get();
+        }
         settingHeatAuxSP.set(tempFloat);
         doWrite = true;
         Homie.getLogger() << F("✔ Property ") << property << " has been updated!" << endl;

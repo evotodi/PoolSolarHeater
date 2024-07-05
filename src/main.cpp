@@ -138,6 +138,8 @@ void setup() {
     // pinMode(BTN2_PIN, INPUT);
     pinMode(TFT_LED, OUTPUT);
     pinMode(TFT_CS, OUTPUT);
+    pinMode(PIN_ENABLE, INPUT);
+    pinMode(PIN_FORCE_ON, INPUT);
 
 #ifdef DEBUG
     Serial.begin(115200);
@@ -293,6 +295,16 @@ void setupHandler() {
 
     parseDTSettings(&dtSettingAir, settingAirProbeCfg.get(), settingAirOffset.get());
     yield();
+
+    // Check set points
+    if (settingHeatAuxSP.get() > settingPoolSP.get()) {
+        Homie.getLogger() << "Heat SP is > Pool SP ! Heat SP changed to Pool SP" << endl;
+        settingHeatAuxSP.set(settingPoolSP.get());
+    }
+    else if (settingPoolSP.get() < settingHeatAuxSP.get()) {
+        Homie.getLogger() << "Pool SP is < Heat SP ! Pool SP changed to Heat SP" << endl;
+        settingPoolSP.set(settingHeatAuxSP.get());
+    }
 
     setupOwSensors();
     setupButtons();
@@ -460,7 +472,7 @@ void loopGatherProcess() {
     if (getForceOn()) {
         setPumpOn();
         wantsHeat = false;
-        if (wantsHeatAux()) {
+        if (settingHeatAuxEnable.get()) {
             Homie.getLogger() << "Manual heat aux on" << endl;
             setHeatAuxOn();
             setRunStatus(RunStatus::MANUAL_HEAT_AUX, true);
@@ -575,6 +587,7 @@ void loopControl() {
     }
     else if (rlyPump) {
         setHeatAuxOff();
+        Homie.getLogger() << "Aux Heating" << endl;
         setRunStatus(RunStatus::SOLAR);
     } else {
         setAllOff();

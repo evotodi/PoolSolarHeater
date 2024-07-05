@@ -5,7 +5,7 @@
 // Debugging Defines >>>
 #define DEBUG
 #define FORCE_ENABLE 1 // 1 of on 0 for off. Undefined for normal
-#define FORCE_ON 0 // 1 of on 0 for off. Undefined for normal
+//#define FORCE_ON 0 // 1 of on 0 for off. Undefined for normal
 //#define LOG_TO_TELNET 1
 #define NO_CHECK_SENSORS_OK
 //#define NO_ENV_SOLAR_CHECK
@@ -27,6 +27,7 @@
 #define TELNET_PORT 23
 #define DS_TEMP_PRECISION 12
 #define T_SENSOR_BAD -500
+#define DISPLAY_LOW_WATTS 2000
 
 // ESP32 Usable Pins
 #ifndef LED_BUILTIN
