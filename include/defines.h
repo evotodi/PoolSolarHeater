@@ -3,15 +3,16 @@
 #define VERSION "2.1.72"
 
 // Debugging Defines >>>
-#define DEBUG 1
+#define DEBUG
+#define FORCE_ENABLE 1 // 1 of on 0 for off. Undefined for normal
+#define FORCE_ON 0 // 1 of on 0 for off. Undefined for normal
 //#define LOG_TO_TELNET 1
-//#define NO_ENV_SOLAR_CHECK 1
-//#define NO_ENV_AIR_CHECK 1
-//#define NO_ENV_CLOUD_CHECK 1
-//#define NO_ENV_IN_OUT_DIFF_CHECK 1
-#define NO_CHECK_SENSORS_OK 1
+#define NO_CHECK_SENSORS_OK
+//#define NO_ENV_SOLAR_CHECK
+//#define NO_ENV_CLOUD_CHECK
+//#define NO_ENV_AIR_CHECK
 //#define DEBUG_FORCE_TIME 1687217416
-#define PRINT_POOL_CONFIG_ON_READ_WRITE 1
+#define PRINT_POOL_CONFIG_ON_READ_WRITE
 // <<< Debugging Defines
 
 #define LOOP_GATHER_DLY          (5*1E3)
@@ -31,7 +32,7 @@
 #ifndef LED_BUILTIN
 #  define LED_BUILTIN     2
 #endif
-#define PIN_AUX_4_SP     4 // SPARE Strapping
+#define PIN_ENABLE       4 // Strapping
 #define MCP_CS           5
 #define ONE_WIRE_BUS     13
 #define BTN2_PIN         14 // Button 2
@@ -41,7 +42,7 @@
 #define SPI_CLK          18 // MCP_CLK, DISP_SCK
 #define SPI_MISO         19 // MCP_DOUT, DISP_MISO
 #define LED_PIN          21
-#define PIN_AUX_22       22 // SPARE
+#define PIN_FORCE_ON     22
 #define SPI_MOSI         23 // MCP_DIN, DISP_MOSI
 #define PUMP_RLY_PIN     25
 #define AUX_HEAT_RLY_PIN 26

@@ -30,6 +30,9 @@ void addLight();
 
 bool checkTempSensors();
 
+bool wantsSolar();
+bool wantsHeatAux();
+
 void setRunStatus(RunStatus rs, bool force = false);
 const char * getRunStatusStr();
 

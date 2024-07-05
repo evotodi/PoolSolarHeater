@@ -41,6 +41,16 @@
 void setupHandler();
 void loopHandler();
 
+void loopGatherData();
+void loopGatherProcess();
+void loopControl();
+void loopPublishData();
+void loopPublishConfig();
+void loopUpdateDaylight();
+void loopHeartbeat();
+
+
+
 #ifdef LOG_TO_TELNET
 void handleTelnet();
 void printHelp();

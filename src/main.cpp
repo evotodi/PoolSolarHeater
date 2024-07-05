@@ -100,6 +100,8 @@ bool isOvercast = false;
 bool atSetpoint = false;
 bool otaInProgress = false;
 bool firstRun = true;
+bool forceOn = false;
+bool wantsHeat = false;
 
 int telnetBuffer;
 Smoothed<int16_t> light;
@@ -127,8 +129,7 @@ bool rlyHeatAux = false;
 bool rlyAux = false;
 time_t lastPublishData = 0;
 
-void setup()
-{
+void setup() {
     pinMode(LED_PIN, OUTPUT);
     pinMode(PUMP_RLY_PIN, OUTPUT);
     pinMode(AUX_HEAT_RLY_PIN, OUTPUT);
@@ -150,15 +151,20 @@ void setup()
 #ifdef DEBUG
     // read diagnostics (optional but can help debug problems)
     uint8_t x = tft.readcommand8(ILI9341_RDMODE);
-    Serial.print("TFT Power Mode: 0x"); Serial.println(x, HEX);
+    Serial.print("TFT Power Mode: 0x");
+    Serial.println(x, HEX);
     x = tft.readcommand8(ILI9341_RDMADCTL);
-    Serial.print("TFT MADCTL Mode: 0x"); Serial.println(x, HEX);
+    Serial.print("TFT MADCTL Mode: 0x");
+    Serial.println(x, HEX);
     x = tft.readcommand8(ILI9341_RDPIXFMT);
-    Serial.print("TFT Pixel Format: 0x"); Serial.println(x, HEX);
+    Serial.print("TFT Pixel Format: 0x");
+    Serial.println(x, HEX);
     x = tft.readcommand8(ILI9341_RDIMGFMT);
-    Serial.print("TFT Image Format: 0x"); Serial.println(x, HEX);
+    Serial.print("TFT Image Format: 0x");
+    Serial.println(x, HEX);
     x = tft.readcommand8(ILI9341_RDSELFDIAG);
-    Serial.print("TFT Self Diagnostic: 0x"); Serial.println(x, HEX);
+    Serial.print("TFT Self Diagnostic: 0x");
+    Serial.println(x, HEX);
 #endif
 
     displayCenterMessage("Booting...");
@@ -238,16 +244,14 @@ void setup()
     Homie.setup();
 }
 
-void loop() 
-{
+void loop() {
     Homie.loop();
 #ifdef LOG_TO_TELNET
     handleTelnet();
 #endif
 }
 
-void setupHandler() 
-{
+void setupHandler() {
     // Code which should run AFTER the Wi-Fi is connected.
 #ifdef LOG_TO_TELNET
     TelnetServer.begin();
@@ -296,178 +300,48 @@ void setupHandler()
     digitalWrite(LED_PIN, HIGH);
 }
 
-void loopHandler() 
-{
+void loopHandler() {
     currentMillis = millis();
     button1.processSyncEvents();
 
     if (!otaInProgress) {
-        // Gather data
-//        if (currentMillis - previousMillisData > intervalData || previousMillisData == 0) {
-//            Homie.getLogger() << "GATHER:" << endl;
-//            if (year() == 1970) {
-//                Homie.getLogger() << "Force update NTP" << endl;
-//                timeClient.forceUpdate();
-//                time_t tt;
-//                tt = getNtpTime();
-//                setTime(tt);
-//                yield();
-//            }
-//
-//            sensors.requestTemperatures();
-//            button1.processSyncEvents();
-//            delay(100);
-//            addTInTemp();
-//            yield();
-//            addTOutTemp();
-//            yield();
-//
-//            Homie.getLogger() << "Tin = " << ItoF(tin.getLast()) << " °F  Tin Smooth = " << ItoF(tin.get()) << " °F " << endl;
-//            Homie.getLogger() << "Tout Solar = " << ItoF(toutSolar.getLast()) << " °F  Tout Solar Smooth = " << ItoF(toutSolar.get()) << " °F " << endl;
-//            Homie.getLogger() << "Tout Heat = " << ItoF(toutHeat.getLast()) << " °F  Tout Heat Smooth = " << ItoF(toutHeat.get()) << " °F " << endl;
-//            yield();
-//
-//            if (isHeating) {
-//                watts.add(FtoI(calcWatts(ItoF(tin.getLast()), ItoF(tout.getLast()), float(poolConfigPumpGpmSetting.get()))));
-//                Homie.getLogger() << "Watts = " << ItoF(watts.getLast()) << " W  Watts Smooth = " << ItoF(watts.get()) << " W " << endl;
-//            } else {
-//                watts.clear();
-//                watts.add(0);
-//            }
-//
-//            addAirTemp();
-//            Homie.getLogger() << "Air = " << ItoF(air.getLast()) << " °F  Air Smooth = " << ItoF(air.get()) << " °F" << endl;
-//            yield();
-//
-//            addPoolTemp();
-//            Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F" << endl;
-//            yield();
-//
-//            addLight();
-//            if (light.get() <= poolConfigCloudySetting.get()) {
-//                isCloudy = true;
-//                cloudyCnt++;
-//                if (cloudyCnt >= poolConfigOvercastCntSetting.get()) {
-//                    isOvercast = true;
-//                }
-//            } else {
-//                isCloudy = false;
-//                isOvercast = false;
-//                cloudyCnt = 0;
-//            }
-//
-//            if (isOvercast) {
-//                cloudyCnt = poolConfigOvercastCntSetting.get();
-//            }
-//
-//            Homie.getLogger() << "Light level = " << light.getLast() << " Light smoothed = " << light.get() << endl;
-//            Homie.getLogger() << "Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << " Cloudy Count = " << cloudyCnt << endl;
-//            yield();
-//
-//            getSolar(&solar);
-//            Homie.getLogger() << "Solar Azimuth = " << solar.azimuth << "° Elevation = " << solar.elevation << "°" << endl;
-//            yield();
-//
-//            Homie.getLogger() << "At setpoint = " << boolToStr(atSetpoint) << "  Heating = " << boolToStr(isHeating) << " Heat Type = " << getRunStatusStr() << endl;
-//            yield();
-//
-//            Homie.getLogger() << endl;
-//
-//            checkTempSensors();
-//
-//            button1.processSyncEvents();
-//            if (displayPage == DisplayPage::DISP_MAIN) {
-//                displayPageMainUpdate();
-//            } else if (displayPage == DisplayPage::DISP_INFO) {
-//                displayPageInfo();
-//            }
-//
-//            previousMillisData = currentMillis;
-//        }
+        // Loop Gather data
+        if (currentMillis - prevMillisGather > intervalGather || prevMillisGather == 0) {
+            loopGatherData();
+            loopGatherProcess();
+            prevMillisGather = currentMillis;
+        }
         yield();
         button1.processSyncEvents();
 
-        // Process data
-//        if (currentMillis - previousMillisProc > intervalProc || previousMillisProc == 0) {
-//            Homie.getLogger() << "PROCESS:" << endl;
-//
-//            button1.processSyncEvents();
-//            doProcess();
-//
-//            Homie.getLogger() << endl;
-//            previousMillisProc = currentMillis;
-//        }
+        // Loop Control
+        if (currentMillis - prevMillisControl > intervalControl || prevMillisControl == 0) {
+            loopControl();
+            prevMillisControl = currentMillis;
+        }
         yield();
         button1.processSyncEvents();
 
-        // Publish data
-//        if (currentMillis - previousMillisPub > intervalPub || previousMillisPub == 0) {
-//            Homie.getLogger() << "PUBLISH:" << endl;
-//            delay(100); //This is needed to allow time to publish
-//            statusNode.setProperty("timestamp").send(getTimestamp(true).c_str());
-//            statusNode.setProperty("heating").send(isHeating ? "true" : "false");
-//            statusNode.setProperty("at_setpoint").send(atSetpoint ? "true" : "false");
-//            statusNode.setProperty("cloudy").send(isCloudy ? "true" : "false");
-//            statusNode.setProperty("overcast").send(isOvercast ? "true" : "false");
-//            statusNode.setProperty("env_override").send(overrideEnv ? "true" : "false");
-//            statusNode.setProperty("man_heat").send(manualHeating ? "true" : "false");
-//            statusNode.setProperty("status").send(status.get());
-//            Homie.getLogger() << "Status: " << status.get() << endl;
-//            yield();
-//            button1.processSyncEvents();
-//
-//            delay(100); //This is needed to allow time to publish
-//            valuesNode.setProperty("tin").send(ItoS(tin.get()));
-//            valuesNode.setProperty("tout").send(ItoS(tout.get()));
-//            valuesNode.setProperty("air").send(ItoS(air.get()));
-//            valuesNode.setProperty("pool").send(ItoS(pool.get()));
-//            valuesNode.setProperty("light").send(String(light.get()));
-//            valuesNode.setProperty("azimuth").send(String(solar.azimuth));
-//            valuesNode.setProperty("elevation").send(String(solar.elevation));
-//            valuesNode.setProperty("watts").send(ItoS(watts.get()));
-//            yield();
-//
-//            Homie.getLogger() << "Published data" << endl;
-//            Homie.getLogger() << endl;
-//
-//            lastPublishData = now();
-//            previousMillisPub = currentMillis;
-//        }
+        // Loop Publish data
+        if (currentMillis - prevMillisPub > intervalPub || prevMillisPub == 0) {
+            loopPublishData();
+            prevMillisPub = currentMillis;
+        }
         yield();
         button1.processSyncEvents();
 
-        // Publish Config
-//        if (currentMillis - previousMillisPubCfg > intervalPubCfg || previousMillisPubCfg == 0) {
-//            Homie.getLogger() << "PUBLISH CONFIG:" << endl;
-//            button1.processSyncEvents();
-//            delay(100); //This is needed to allow time to publish
-//            button1.processSyncEvents();
-//
-//            configNode.setProperty("cloudy").send(String(poolConfigCloudySetting.get()));
-//            configNode.setProperty("overcastCnt").send(String(poolConfigOvercastCntSetting.get()));
-//            configNode.setProperty("sunMinElvAM").send(String(poolConfigSunMinElvAMSetting.get()));
-//            configNode.setProperty("sunMinElvPM").send(String(poolConfigSunMinElvPMSetting.get()));
-//            configNode.setProperty("setPoint").send(String(poolConfigSetPointSetting.get()));
-//            configNode.setProperty("setPointSwing").send(String(poolConfigSetPointSwingSetting.get()));
-//            configNode.setProperty("airPoolDiff").send(String(poolConfigAirPoolDiffSetting.get()));
-//            configNode.setProperty("poolTempIn").send(String(poolConfigPoolTempInSetting.get()));
-//            configNode.setProperty("airOffset").send(String(poolAirOffsetSetting.get()));
-//            configNode.setProperty("poolOffset").send(String(poolPoolOffsetSetting.get()));
-//            configNode.setProperty("tinOffset").send(String(poolTinOffsetSetting.get()));
-//            configNode.setProperty("toutOffset").send(String(poolToutOffsetSetting.get()));
-//            configNode.setProperty("pumpGpm").send(String(poolConfigPumpGpmSetting.get()));
-//
-//            Homie.getLogger() << "Published config" << endl;
-//            Homie.getLogger() << endl;
-//            previousMillisPubCfg = currentMillis;
-//        }
+        // Loop Publish Config
+        if (currentMillis - prevMillisPubCfg > intervalPubCfg || prevMillisPubCfg == 0) {
+            loopPublishConfig();
+            prevMillisPubCfg = currentMillis;
+        }
         yield();
         button1.processSyncEvents();
     }
 
     // Loop Update Daylight
     if (currentMillis - prevMillisDaylight > intervalDayLight || prevMillisDaylight == 0) {
-        getDaylight(&daylight);
+        loopUpdateDaylight();
         prevMillisDaylight = currentMillis;
     }
     yield();
@@ -475,20 +349,308 @@ void loopHandler()
 
     // Loop Heartbeat
     if (currentMillis - prevMillisHB > intervalHB || prevMillisHB == 0) {
-        digitalWrite(LED_BUILTIN, LOW);
-        delay(75);
-        yield();
-        digitalWrite(LED_BUILTIN, HIGH);
-        delay(200);
-        yield();
-        digitalWrite(LED_BUILTIN, LOW);
-        delay(75);
-        yield();
-        digitalWrite(LED_BUILTIN, HIGH);
+        loopHeartbeat();
         prevMillisHB = currentMillis;
     }
 
     firstRun = false;
+}
+
+void loopGatherData() {
+    Homie.getLogger() << "GATHER:" << endl;
+    if (year() == 1970) {
+        Homie.getLogger() << "Force update NTP" << endl;
+        timeClient.forceUpdate();
+        time_t tt;
+        tt = getNtpTime();
+        setTime(tt);
+        yield();
+    }
+
+    sensors.requestTemperatures();
+    button1.processSyncEvents();
+    delay(100);
+    addTInTemp();
+    Homie.getLogger() << "Tin = " << ItoF(tin.getLast()) << " °F  Tin Smooth = " << ItoF(tin.get()) << " °F " << endl;
+    yield();
+    addTOutSolarTemp();
+    Homie.getLogger() << "Tout Solar = " << ItoF(toutSolar.getLast()) << " °F  Tout Solar Smooth = " << ItoF(toutSolar.get()) << " °F " << endl;
+    yield();
+    addTOutHeatTemp();
+    Homie.getLogger() << "Tout Heat = " << ItoF(toutHeat.getLast()) << " °F  Tout Heat Smooth = " << ItoF(toutHeat.get()) << " °F " << endl;
+    yield();
+    addAirTemp();
+    Homie.getLogger() << "Air = " << ItoF(air.getLast()) << " °F  Air Smooth = " << ItoF(air.get()) << " °F " << endl;
+    yield();
+    addPoolTemp();
+    Homie.getLogger() << "Pool = " << ItoF(pool.getLast()) << " °F  Pool Smooth = " << ItoF(pool.get()) << " °F " << endl;
+    yield();
+
+    if (rlyPump) {
+        watts.add(FtoI(calcWatts(ItoF(tin.getLast()), ItoF(toutHeat.getLast()), float(settingPumpGpm.get()))));
+        Homie.getLogger() << "Watts = " << ItoF(watts.getLast()) << " W  Watts Smooth = " << ItoF(watts.get()) << " W " << endl;
+    } else {
+        watts.clear();
+        watts.add(0);
+    }
+
+
+    addLight();
+    if (light.get() <= settingCloudy.get()) {
+        isCloudy = true;
+        cloudyCnt++;
+        if (cloudyCnt >= settingOvercastCnt.get()) {
+            isOvercast = true;
+        }
+    } else {
+        isCloudy = false;
+        isOvercast = false;
+        cloudyCnt = 0;
+    }
+
+    if (isOvercast) {
+        cloudyCnt = settingOvercastCnt.get();
+    }
+
+    Homie.getLogger() << "Light level = " << light.getLast() << " Light smoothed = " << light.get() << endl;
+    Homie.getLogger() << "Cloudy = " << boolToStr(isCloudy) << " Overcast = " << boolToStr(isOvercast) << " Cloudy Count = " << cloudyCnt << endl;
+    yield();
+
+    getSolar(&solar);
+    Homie.getLogger() << "Solar Azimuth = " << solar.azimuth << "° Elevation = " << solar.elevation << "°" << endl;
+    yield();
+
+    Homie.getLogger() << "At setpoint = " << boolToStr(atSetpoint) << "  Heating = " << boolToStr(rlyPump) << " Heat Type = " << getRunStatusStr() << endl;
+    yield();
+
+    Homie.getLogger() << endl;
+
+    checkTempSensors();
+
+    status.reset();
+
+    if (!poolOk) status << "SENSOR: Pool error\n";
+    if (!tinOk) status << "SENSOR: Temp in error\n";
+    if (!toutSolarOk) status << "SENSOR: Temp solar out error\n";
+    if (!toutHeatOk) status << "SENSOR: Temp heat out error\n";
+    if (!airOk) status << "SENSOR: Air error\n";
+
+    button1.processSyncEvents();
+    if (displayPage == DisplayPage::DISP_MAIN) {
+        displayPageMainUpdate();
+    } else if (displayPage == DisplayPage::DISP_INFO) {
+        displayPageInfo();
+    }
+}
+
+void loopGatherProcess() {
+    Homie.getLogger() << "PROCESS:" << endl;
+    // Check enabled
+    if (!getEnable()) {
+        Homie.getLogger() << "Controller not enabled" << endl;
+        setPumpOff();
+        setHeatAuxOff();
+        wantsHeat = false;
+        setRunStatus(RunStatus::OFF, true);
+        button1.processSyncEvents();
+        return;
+    }
+
+    // Check if forced on
+    if (getForceOn()) {
+        setPumpOn();
+        wantsHeat = false;
+        if (wantsHeatAux()) {
+            Homie.getLogger() << "Manual heat aux on" << endl;
+            setHeatAuxOn();
+            setRunStatus(RunStatus::MANUAL_HEAT_AUX, true);
+        } else {
+            Homie.getLogger() << "Manual solar on" << endl;
+            setHeatAuxOff();
+            setRunStatus(RunStatus::MANUAL_SOLAR, true);
+        }
+        button1.processSyncEvents();
+        return;
+    }
+
+    // Check sun elevation
+#ifndef NO_ENV_SOLAR_CHECK
+    time_t t = now();
+    if (t < daylight.midday && solar.elevation <= settingSunMinElvAM.get()) {
+        Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below morning minimum " << settingSunMinElvAM.get() << "°" << endl;
+        status << "ENV: Below AM Elv\n";
+        setAllOff();
+        wantsHeat = false;
+        setRunStatus(RunStatus::ENV_STANDBY);
+        button1.processSyncEvents();
+        return;
+    }
+    if (t >= daylight.midday && solar.elevation <= settingSunMinElvPM.get()) {
+        Homie.getLogger() << "Env: Elevation " << solar.elevation << "° below evening minimum " << settingSunMinElvPM.get() << "°" << endl;
+        status << "ENV: Below PM Elv\n";
+        setAllOff();
+        wantsHeat = false;
+        setRunStatus(RunStatus::ENV_STANDBY);
+        button1.processSyncEvents();
+        return;
+    }
+#else
+    Homie.getLogger() << "Env: Skip solar check by define" << endl;
+#endif
+
+    // Check pool temp
+    if (ItoF(pool.get()) >= (settingPoolSP.get() - settingSPHyst.get())) {
+        Homie.getLogger() << "Pool at set point" << endl;
+        setAllOff();
+        wantsHeat = false;
+        setRunStatus(RunStatus::STANDBY);
+        button1.processSyncEvents();
+        return;
+    }
+
+    // Must want heat at this point
+    Homie.getLogger() << "Pool wants heat" << endl;
+    wantsHeat = true;
+}
+
+void loopControl() {
+    Homie.getLogger() << "PROCESS:" << endl;
+    button1.processSyncEvents();
+
+    // Check if pool wants heat
+    if (!wantsHeat) {
+        if (!getForceOn()) {
+            setAllOff();
+        }
+        Homie.getLogger() << "Pool doesn't want heat" << endl;
+        return;
+    }
+
+    bool doSolar = true;
+
+    // Check if cloudy
+#ifndef NO_ENV_CLOUD_CHECK
+    if (isOvercast == true && rlyHeatAux == false) {
+        Homie.getLogger() << "Env: Overcast" << endl;
+        status << "ENV: Overcast\n";
+        doSolar = false;
+    }
+#else
+    Homie.getLogger() << "Env: Skip cloud check by define" << endl;
+#endif
+
+    // Check if cold
+#ifndef NO_ENV_AIR_CHECK
+    if (isOvercast == true && rlyHeatAux == false && ItoF(air.get()) <= ItoF(pool.get())) {
+        Homie.getLogger() << "Env: Too Cold" << endl;
+        status << "ENV: Too Cold\n";
+        doSolar = false;
+    }
+#else
+    Homie.getLogger() << "Env: Skip air check by define" << endl;
+#endif
+
+    // Check if allow solar
+    if (doSolar) {
+        setPumpOn();
+        setRunStatus(RunStatus::SOLAR);
+        Homie.getLogger() << "Solar Heating" << endl;
+    }
+
+    // Check if aux heat is enabled
+    if (!settingHeatAuxEnable.get()) {
+        Homie.getLogger() << "Aux Heat is disabled" << endl;
+        if (!doSolar) {
+            setAllOff();
+            setRunStatus(RunStatus::ENV_STANDBY);
+        }
+
+        return;
+    }
+
+    if (wantsHeatAux()) {
+        setPumpOn();
+        setHeatAuxOn();
+        setRunStatus(RunStatus::HEAT_AUX);
+    }
+    else if (rlyPump) {
+        setHeatAuxOff();
+        setRunStatus(RunStatus::SOLAR);
+    } else {
+        setAllOff();
+        setRunStatus(RunStatus::ENV_STANDBY);
+    }
+}
+
+void loopPublishData() {
+    Homie.getLogger() << "PUBLISH:" << endl;
+    delay(100); //This is needed to allow time to publish
+    statusNode.setProperty("timestamp").send(getTimestamp(true).c_str());
+    statusNode.setProperty("cloudy").send(isCloudy ? "true" : "false");
+    statusNode.setProperty("overcast").send(isOvercast ? "true" : "false");
+    statusNode.setProperty("status").send(status.get());
+    Homie.getLogger() << "Status: " << status.get() << endl;
+    yield();
+    button1.processSyncEvents();
+
+    delay(100); //This is needed to allow time to publish
+    valuesNode.setProperty("tin").send(ItoS(tin.get()));
+    valuesNode.setProperty("toutSolar").send(ItoS(toutSolar.get()));
+    valuesNode.setProperty("toutHeat").send(ItoS(toutHeat.get()));
+    valuesNode.setProperty("air").send(ItoS(air.get()));
+    valuesNode.setProperty("pool").send(ItoS(pool.get()));
+    valuesNode.setProperty("light").send(String(light.get()));
+    valuesNode.setProperty("azimuth").send(String(solar.azimuth));
+    valuesNode.setProperty("elevation").send(String(solar.elevation));
+    valuesNode.setProperty("watts").send(ItoS(watts.get()));
+    yield();
+
+    Homie.getLogger() << "Published data" << endl;
+    Homie.getLogger() << endl;
+
+    lastPublishData = now();
+}
+
+void loopPublishConfig() {
+    Homie.getLogger() << "PUBLISH CONFIG:" << endl;
+    button1.processSyncEvents();
+    delay(100); //This is needed to allow time to publish
+    button1.processSyncEvents();
+
+    configNode.setProperty("cloudy").send(String(settingCloudy.get()));
+    configNode.setProperty("overcastCnt").send(String(settingOvercastCnt.get()));
+    configNode.setProperty("sunMinElvAM").send(String(settingSunMinElvAM.get()));
+    configNode.setProperty("sunMinElvPM").send(String(settingSunMinElvPM.get()));
+    configNode.setProperty("poolSP").send(String(settingPoolSP.get()));
+    configNode.setProperty("heatAuxSP").send(String(settingHeatAuxSP.get()));
+    configNode.setProperty("spHyst").send(String(settingSPHyst.get()));
+    configNode.setProperty("airOffset").send(String(settingAirOffset.get()));
+    configNode.setProperty("poolOffset").send(String(settingPoolOffset.get()));
+    configNode.setProperty("tinOffset").send(String(settingTinOffset.get()));
+    configNode.setProperty("toutSolarOffset").send(String(settingToutSolarOffset.get()));
+    configNode.setProperty("toutHeatOffset").send(String(settingToutHeatOffset.get()));
+    configNode.setProperty("pumpGpm").send(String(settingPumpGpm.get()));
+    configNode.setProperty("heatAuxEnable").send(String(settingHeatAuxEnable.get()));
+
+    Homie.getLogger() << "Published config" << endl;
+    Homie.getLogger() << endl;
+}
+
+void loopUpdateDaylight() {
+    getDaylight(&daylight);
+}
+
+void loopHeartbeat() {
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(75);
+    yield();
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(200);
+    yield();
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(75);
+    yield();
+    digitalWrite(LED_BUILTIN, HIGH);
 }
 
 #ifdef LOG_TO_TELNET
@@ -518,36 +680,36 @@ void handleTelnet(){
                 case 'X':
                     HomieInternals::HomieClass::reset();
                     break;
-                case 'o':
-                    toggleOverrideEnv();
-                    break;
-                case 'm':
-                    toggleManualHeatingEnable();
-                    break;
-                case 'h':
-                    toggleManualHeating();
-                    break;
-                case 'u':
-                    calibratePoolTemps();
-                    break;
-                case 'i':
-                    calibrationReset();
-                    break;
-                case 'p':
-                    previousMillisPub = 0;
-                    break;
-                case 's':
-                    toggleEnvNoCheckSolar();
-                    break;
-                case 'a':
-                    toggleEnvNoCheckAir();
-                    break;
-                case 'c':
-                    toggleEnvNoCheckCloud();
-                    break;
-                case 'd':
-                    toggleEnvNoCheckTDiff();
-                    break;
+//                case 'o':
+//                    toggleOverrideEnv();
+//                    break;
+//                case 'm':
+//                    toggleManualHeatingEnable();
+//                    break;
+//                case 'h':
+//                    toggleManualHeating();
+//                    break;
+//                case 'u':
+//                    calibratePoolTemps();
+//                    break;
+//                case 'i':
+//                    calibrationReset();
+//                    break;
+//                case 'p':
+//                    previousMillisPub = 0;
+//                    break;
+//                case 's':
+//                    toggleEnvNoCheckSolar();
+//                    break;
+//                case 'a':
+//                    toggleEnvNoCheckAir();
+//                    break;
+//                case 'c':
+//                    toggleEnvNoCheckCloud();
+//                    break;
+//                case 'd':
+//                    toggleEnvNoCheckTDiff();
+//                    break;
                 default:
                     Serial.write(telnetBuffer);
             }
@@ -568,22 +730,21 @@ void printHelp()
     Homie.getLogger() << endl;
     Homie.getLogger() << "p - Publish homie now" << endl;
     Homie.getLogger() << endl;
-    Homie.getLogger() << "o - Toggle override environment (current: " << boolToStr(overrideEnv) << ")" << endl;
-    Homie.getLogger() << "m - Toggle manual heating enable (current: " << boolToStr(manualHeatingEnable) << ")" << endl;
-    Homie.getLogger() << "h - Toggle manual heating (current: " << boolToStr(manualHeating) << ")" << endl;
+//    Homie.getLogger() << "o - Toggle override environment (current: " << boolToStr(overrideEnv) << ")" << endl;
+//    Homie.getLogger() << "m - Toggle manual heating enable (current: " << boolToStr(manualHeatingEnable) << ")" << endl;
+//    Homie.getLogger() << "h - Toggle manual heating (current: " << boolToStr(manualHeating) << ")" << endl;
     Homie.getLogger() << endl;
-    Homie.getLogger() << "s - Toggle environment don't check solar (current: " << boolToStr(envCheckNoSolar) << ")" << endl;
-    Homie.getLogger() << "a - Toggle environment don't check air (current: " << boolToStr(envCheckNoAir) << ")" << endl;
-    Homie.getLogger() << "c - Toggle environment don't check cloudy (current: " << boolToStr(envCheckNoCloud) << ")" << endl;
-    Homie.getLogger() << "d - Toggle environment don't check tin tout diff (current: " << boolToStr(envCheckNoTDiff) << ")" << endl;
+//    Homie.getLogger() << "s - Toggle environment don't check solar (current: " << boolToStr(envCheckNoSolar) << ")" << endl;
+//    Homie.getLogger() << "a - Toggle environment don't check air (current: " << boolToStr(envCheckNoAir) << ")" << endl;
+//    Homie.getLogger() << "c - Toggle environment don't check cloudy (current: " << boolToStr(envCheckNoCloud) << ")" << endl;
+//    Homie.getLogger() << "d - Toggle environment don't check tin tout diff (current: " << boolToStr(envCheckNoTDiff) << ")" << endl;
 
     delay(3000);
 }
 #endif
 
-void onHomieEvent(const HomieEvent& event)
-{
-    if(event.type == HomieEventType::OTA_STARTED) {
+void onHomieEvent(const HomieEvent &event) {
+    if (event.type == HomieEventType::OTA_STARTED) {
 #ifdef LOG_TO_TELNET
         if (TelnetServer.hasClient()) {
             TelnetServer.stop();
@@ -592,21 +753,18 @@ void onHomieEvent(const HomieEvent& event)
 #endif
         displayCenterMessage("OTA Updating...");
         otaInProgress = true;
-    }
-    else if(event.type == HomieEventType::WIFI_CONNECTED) {
+    } else if (event.type == HomieEventType::WIFI_CONNECTED) {
         sprintf(ip, "%s", event.ip.toString().c_str());
         Serial.printf("Wi-Fi connected, IP: %s", ip);
         char s[32];
         sprintf(s, "IP Address\n%s", ip);
         displayCenterMessage(s);
         delay(1500);
-    }
-    else if(event.type == HomieEventType::OTA_FAILED || event.type == HomieEventType::OTA_SUCCESSFUL) {
+    } else if (event.type == HomieEventType::OTA_FAILED || event.type == HomieEventType::OTA_SUCCESSFUL) {
         displayCenterMessage("OTA Update\nFAILED!");
         otaInProgress = false;
         delay(3000);
-    }
-    else if(event.type == HomieEventType::WIFI_DISCONNECTED) {
+    } else if (event.type == HomieEventType::WIFI_DISCONNECTED) {
         Homie.getLogger() << F("✖ Failed to connect to wifi. Rebooting...") << endl;
         displayCenterMessage("WIFI\nDisconnected");
         esp_restart();

@@ -22,6 +22,12 @@ void doProcess() {
 //    }
 }
 
+void setAllOff() {
+    setPumpOff();
+    setHeatAuxOff();
+    setAuxOff();
+}
+
 void setPumpOn() {
     digitalWrite(PUMP_RLY_PIN, HIGH);
     rlyPump = true;
@@ -50,4 +56,32 @@ void setAuxOn() {
 void setAuxOff() {
     digitalWrite(AUX_RLY_PIN, LOW);
     rlyAux = false;
+}
+
+bool getEnable() {
+#ifdef FORCE_ENABLE
+    if (FORCE_ENABLE == 1){
+        return true;
+    }
+
+    return false;
+#else
+    return digitalRead(PIN_ENABLE);
+#endif
+}
+
+bool getForceOn() {
+#ifdef FORCE_ON
+    if (FORCE_ON == 1){
+        return true;
+    }
+
+    return false;
+#else
+    if (digitalRead(PIN_FORCE_ON)) {
+        return true;
+    }
+
+    return forceOn;
+#endif
 }

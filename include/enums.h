@@ -21,9 +21,11 @@ enum MenuPage {
 
 enum RunStatus {
     OFF = 0,
-    SOLAR = 1,
-    PROPANE = 2,
-    MANUAL_SOLAR = 3,
-    MANUAL_PROPANE = 4,
-    ERROR = 5,
+    STANDBY = 1,
+    ENV_STANDBY = 2,
+    SOLAR = 3,
+    HEAT_AUX = 4,
+    MANUAL_SOLAR = 5,
+    MANUAL_HEAT_AUX = 6,
+    ERROR = 7,
 };

@@ -106,6 +106,8 @@ extern bool isCloudy;
 extern bool isOvercast;
 extern bool otaInProgress;
 extern bool firstRun;
+extern bool forceOn;
+extern bool wantsHeat;
 
 extern int telnetBuffer;
 extern Smoothed<int16_t> light;

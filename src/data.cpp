@@ -123,6 +123,22 @@ bool checkTempSensors() {
     return false;
 }
 
+bool wantsSolar() {
+    if (ItoF(pool.get()) <= (settingPoolSP.get() - settingSPHyst.get())) {
+        return true;
+    }
+
+    return false;
+}
+
+bool wantsHeatAux() {
+    if (ItoF(pool.get()) <= (settingHeatAuxSP.get() - settingSPHyst.get())) {
+        return true;
+    }
+
+    return false;
+}
+
 void setRunStatus(RunStatus rs, bool force) {
     if (runStatus == RunStatus::ERROR) {
         if (force) {
@@ -139,17 +155,23 @@ const char * getRunStatusStr() {
         case OFF:
             return "Off";
             break;
+        case STANDBY:
+            return "Standby";
+            break;
+        case ENV_STANDBY:
+            return "Env Standby";
+            break;
         case SOLAR:
             return "Solar";
             break;
-        case PROPANE:
-            return "Heat";
+        case HEAT_AUX:
+            return "Heat Aux";
             break;
         case MANUAL_SOLAR:
-            return "Manual Solar";
+            return "MAN Solar";
             break;
-        case MANUAL_PROPANE:
-            return "Manual Heat";
+        case MANUAL_HEAT_AUX:
+            return "MAN Heat Aux";
             break;
         case ERROR:
             return "ERROR";
