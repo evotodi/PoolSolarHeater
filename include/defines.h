@@ -6,11 +6,11 @@
 #define DEBUG
 #define FORCE_ENABLE 1 // 1 of on 0 for off. Undefined for normal
 //#define FORCE_ON 0 // 1 of on 0 for off. Undefined for normal
-//#define LOG_TO_TELNET 1
+#define LOG_TO_TELNET
 #define NO_CHECK_SENSORS_OK
-//#define NO_ENV_SOLAR_CHECK
-//#define NO_ENV_CLOUD_CHECK
-//#define NO_ENV_AIR_CHECK
+#define NO_ENV_SOLAR_CHECK
+#define NO_ENV_CLOUD_CHECK
+#define NO_ENV_AIR_CHECK
 //#define DEBUG_FORCE_TIME 1687217416
 #define PRINT_POOL_CONFIG_ON_READ_WRITE
 // <<< Debugging Defines

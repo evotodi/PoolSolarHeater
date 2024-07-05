@@ -211,6 +211,7 @@ void setup() {
     statusNode.advertise("timestamp").setName("Timestamp").setDatatype("string").setUnit("");
     statusNode.advertise("cloudy").setName("Cloudy").setDatatype("boolean");
     statusNode.advertise("overcast").setName("Overcast").setDatatype("boolean");
+    statusNode.advertise("forceOn").setName("Force ON").setDatatype("boolean").settable(mqttForceOnHandler);
     statusNode.advertise("status").setName("Status").setDatatype("string");
 
     configNode.advertise("cloudy").setName("Cloudy").setDatatype("integer").setUnit("").settable();
@@ -601,6 +602,7 @@ void loopPublishData() {
     statusNode.setProperty("timestamp").send(getTimestamp(true).c_str());
     statusNode.setProperty("cloudy").send(isCloudy ? "true" : "false");
     statusNode.setProperty("overcast").send(isOvercast ? "true" : "false");
+    statusNode.setProperty("forceOn").send(forceOn ? "true" : "false");
     statusNode.setProperty("status").send(status.get());
     Homie.getLogger() << "Status: " << status.get() << endl;
     yield();
@@ -674,7 +676,7 @@ void handleTelnet(){
             if(Telnet) Telnet.stop();          // client disconnected
             Telnet = TelnetServer.available(); // ready for new client
         } else {
-            TelnetServer.available().stop();  // have client, block new conections
+            TelnetServer.available().stop();  // have client, block new connections
         }
     }
 
@@ -693,36 +695,12 @@ void handleTelnet(){
                 case 'X':
                     HomieInternals::HomieClass::reset();
                     break;
-//                case 'o':
-//                    toggleOverrideEnv();
-//                    break;
-//                case 'm':
-//                    toggleManualHeatingEnable();
-//                    break;
-//                case 'h':
-//                    toggleManualHeating();
-//                    break;
-//                case 'u':
-//                    calibratePoolTemps();
-//                    break;
-//                case 'i':
-//                    calibrationReset();
-//                    break;
-//                case 'p':
-//                    previousMillisPub = 0;
-//                    break;
-//                case 's':
-//                    toggleEnvNoCheckSolar();
-//                    break;
-//                case 'a':
-//                    toggleEnvNoCheckAir();
-//                    break;
-//                case 'c':
-//                    toggleEnvNoCheckCloud();
-//                    break;
-//                case 'd':
-//                    toggleEnvNoCheckTDiff();
-//                    break;
+                case 'p':
+                    prevMillisPub = 0;
+                    break;
+                case 'o':
+                    toggleForceOn();
+                    break;
                 default:
                     Serial.write(telnetBuffer);
             }
@@ -743,14 +721,7 @@ void printHelp()
     Homie.getLogger() << endl;
     Homie.getLogger() << "p - Publish homie now" << endl;
     Homie.getLogger() << endl;
-//    Homie.getLogger() << "o - Toggle override environment (current: " << boolToStr(overrideEnv) << ")" << endl;
-//    Homie.getLogger() << "m - Toggle manual heating enable (current: " << boolToStr(manualHeatingEnable) << ")" << endl;
-//    Homie.getLogger() << "h - Toggle manual heating (current: " << boolToStr(manualHeating) << ")" << endl;
-    Homie.getLogger() << endl;
-//    Homie.getLogger() << "s - Toggle environment don't check solar (current: " << boolToStr(envCheckNoSolar) << ")" << endl;
-//    Homie.getLogger() << "a - Toggle environment don't check air (current: " << boolToStr(envCheckNoAir) << ")" << endl;
-//    Homie.getLogger() << "c - Toggle environment don't check cloudy (current: " << boolToStr(envCheckNoCloud) << ")" << endl;
-//    Homie.getLogger() << "d - Toggle environment don't check tin tout diff (current: " << boolToStr(envCheckNoTDiff) << ")" << endl;
+    Homie.getLogger() << "o - Toggle force on (current: " << boolToStr(forceOn) << ")" << endl;
 
     delay(3000);
 }

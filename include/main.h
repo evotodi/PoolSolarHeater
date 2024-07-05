@@ -49,8 +49,6 @@ void loopPublishConfig();
 void loopUpdateDaylight();
 void loopHeartbeat();
 
-
-
 #ifdef LOG_TO_TELNET
 void handleTelnet();
 void printHelp();

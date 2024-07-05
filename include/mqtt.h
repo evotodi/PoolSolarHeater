@@ -7,12 +7,5 @@
 #include <Homie.h>
 
 bool configNodeInputHandler(const HomieRange &range, const String &property, const String &value);
-//bool mqttHeatOnHandler(const HomieRange &range, const String &value);
-//void toggleOverrideEnv();
-//void toggleManualHeatingEnable();
-//void toggleManualHeating();
-//void toggleEnvNoCheckSolar();
-//void toggleEnvNoCheckAir();
-//void toggleEnvNoCheckCloud();
-//void toggleEnvNoCheckTDiff();
-//void toggleEnvNoCheckAuxHeatDiff();
+void toggleForceOn(int8_t setTo = -1);
+bool mqttForceOnHandler(const HomieRange &range, const String &value);

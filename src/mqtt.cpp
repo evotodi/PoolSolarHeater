@@ -194,130 +194,35 @@ bool configNodeInputHandler(const HomieRange &range, const String &property, con
     return true;
 }
 
-//bool mqttHeatOnHandler(const HomieRange &range, const String &value) {
-//    if (value != "true" && value != "false") return false;
-//    bool on = (value == "true");
-//
-//    if (on) {
-//        overrideEnv = true;
-//        manualHeatingEnable = true;
-//        manualHeating = true;
-//        heatOn();
-//    } else {
-//        overrideEnv = false;
-//        manualHeatingEnable = false;
-//        manualHeating = false;
-//        heatOff();
-//    }
-//    statusNode.setProperty("heating").send(value);
-//    Homie.getLogger() << "MQTT Pump is forced " << (on ? "on" : "off") << endl;
-//
-//    return true;
-//}
+void toggleForceOn(int8_t setTo) {
+    if (setTo == 0) {
+        forceOn = false;
+    }
+    else if (setTo > 0) {
+        forceOn = true;
+    }
+    else {
+        forceOn = !forceOn;
+    }
 
-//void toggleOverrideEnv() {
-//    overrideEnv = !overrideEnv;
-//    if (overrideEnv) {
-//        Homie.getLogger() << "Environment Override Enabled !" << endl;
-//    } else {
-//        Homie.getLogger() << "Environment Override Disabled !" << endl;
-//        manualHeating = false;
-//        manualHeatingEnable = false;
-//        envCheckNoSolar = false;
-//        envCheckNoAir = false;
-//        envCheckNoCloud = false;
-//        envCheckNoTDiff = false;
-//    }
-//}
-//
-//void toggleManualHeatingEnable() {
-//    if (!overrideEnv) {
-//        Homie.getLogger() << F("✖ Must override the environment for manual heating") << endl;
-//        manualHeatingEnable = false;
-//        return;
-//    }
-//
-//    manualHeatingEnable = !manualHeatingEnable;
-//
-//    if (manualHeatingEnable) {
-//        Homie.getLogger() << "Environment Manual Heating Enabled !" << endl;
-//        manualHeating = isHeating;
-//    } else {
-//        Homie.getLogger() << "Environment Manual Heating Disabled !" << endl;
-//        manualHeating = false;
-//        heatOff();
-//    }
-//
-//}
-//
-//void toggleManualHeating() {
-//    if (!overrideEnv) {
-//        Homie.getLogger() << F("✖ Must override the environment for manual heating") << endl;
-//        manualHeating = false;
-//        return;
-//    }
-//
-//    if (!manualHeatingEnable) {
-//        Homie.getLogger() << F("✖ Must enable manual heating first") << endl;
-//        manualHeating = false;
-//        return;
-//    }
-//
-//    manualHeating = !manualHeating;
-//
-//    if (manualHeating) {
-//        heatOn();
-//    } else {
-//        heatOff();
-//    }
-//}
-//
-//void toggleEnvNoCheckSolar() {
-//    envCheckNoSolar = !envCheckNoSolar;
-//
-//    if (envCheckNoSolar) {
-//        Homie.getLogger() << "Environment don't check solar" << endl;
-//    } else {
-//        Homie.getLogger() << "Environment check solar" << endl;
-//    }
-//}
-//
-//void toggleEnvNoCheckAir() {
-//    envCheckNoAir = !envCheckNoAir;
-//
-//    if (envCheckNoAir) {
-//        Homie.getLogger() << "Environment don't check air" << endl;
-//    } else {
-//        Homie.getLogger() << "Environment check air" << endl;
-//    }
-//}
-//
-//void toggleEnvNoCheckCloud() {
-//    envCheckNoCloud = !envCheckNoCloud;
-//
-//    if (envCheckNoCloud) {
-//        Homie.getLogger() << "Environment don't check cloudy" << endl;
-//    } else {
-//        Homie.getLogger() << "Environment check cloudy" << endl;
-//    }
-//}
-//
-//void toggleEnvNoCheckTDiff() {
-//    envCheckNoTDiff = !envCheckNoTDiff;
-//
-//    if (envCheckNoTDiff) {
-//        Homie.getLogger() << "Environment don't check tin tout diff" << endl;
-//    } else {
-//        Homie.getLogger() << "Environment check tin tout diff" << endl;
-//    }
-//}
-//
-//void toggleEnvNoCheckAuxHeatDiff() {
-//    envCheckNoAuxHeatDiff = !envCheckNoAuxHeatDiff;
-//
-//    if (envCheckNoAuxHeatDiff) {
-//        Homie.getLogger() << "Environment don't check aux heat diff" << endl;
-//    } else {
-//        Homie.getLogger() << "Environment check aux heat diff" << endl;
-//    }
-//}
+    if (forceOn) {
+        Homie.getLogger() << "Force ON enabled" << endl;
+    } else {
+        Homie.getLogger() << "Force ON disabled" << endl;
+    }
+}
+
+bool mqttForceOnHandler(const HomieRange &range, const String &value) {
+    if (value != "true" && value != "false") return false;
+    bool on = (value == "true");
+
+    if (on) {
+        toggleForceOn(1);
+    } else {
+        toggleForceOn(0);
+    }
+    statusNode.setProperty("forceOn").send(value);
+    Homie.getLogger() << "MQTT Pump/Heating is forced " << (on ? "on" : "off") << endl;
+
+    return true;
+}
