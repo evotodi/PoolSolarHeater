@@ -689,6 +689,9 @@ void handleTelnet(){
                 case '?':
                     printHelp();
                     break;
+                case 'h':
+                    printHelp();
+                    break;
                 case 'r':
                     Homie.reboot();
                     break;
@@ -711,7 +714,7 @@ void handleTelnet(){
 void printHelp()
 {
     Homie.getLogger() << "Help:" << endl;
-    Homie.getLogger() << "? - This help" << endl;
+    Homie.getLogger() << "? or h - This help" << endl;
     Homie.getLogger() << endl;
     Homie.getLogger() << "r - Reboot" << endl;
     Homie.getLogger() << "X - Reset config to default! (capital x)" << endl;
