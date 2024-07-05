@@ -67,37 +67,28 @@ ConfigValidationResult Validation::_validateConfig(const JsonObject object) {
     }
 
     {
-        JsonVariant setPoint = obj["setPoint"];
+        JsonVariant poolSP = obj["poolSP"];
 
-        if (setPoint.as<double>() <= 0) {
-            result.reason = F("config.setPoint must be greater than 0");
+        if (poolSP.as<double>() <= 0) {
+            result.reason = F("config.poolSP must be greater than 0");
             return result;
         }
     }
 
     {
-        JsonVariant setPointSwing = obj["setPointSwing"];
+        JsonVariant heatAuxSP = obj["heatAuxSP"];
 
-        if (setPointSwing.as<double>() <= 0) {
-            result.reason = F("config.setPointSwing must be greater than 0");
+        if (heatAuxSP.as<double>() <= 0) {
+            result.reason = F("config.heatAuxSP must be greater than 0");
             return result;
         }
     }
 
     {
-        JsonVariant airPoolDiff = obj["airPoolDiff"];
+        JsonVariant spHyst = obj["spHyst"];
 
-        if (airPoolDiff.as<double>() <= 0) {
-            result.reason = F("config.airPoolDiff must be greater than 0");
-            return result;
-        }
-    }
-
-    {
-        JsonVariant poolTempIn = obj["poolTempIn"];
-
-        if (poolTempIn.as<uint16_t>() > 1) {
-            result.reason = F("config.poolTempIn must be a 1 or 0");
+        if (spHyst.as<double>() <= 0) {
+            result.reason = F("config.spHyst must be greater than 0");
             return result;
         }
     }
@@ -166,14 +157,27 @@ ConfigValidationResult Validation::_validateProbeSettings(const JsonObject objec
     }
 
     {
-        JsonVariant tout = obj["tout"];
+        JsonVariant toutSolar = obj["toutSolar"];
 
-        if (!tout.as<const char*>()) {
-            result.reason = F("probeSettings.tout is not a string");
+        if (!toutSolar.as<const char*>()) {
+            result.reason = F("probeSettings.toutSolar is not a string");
             return result;
         }
-        if (strcmp_P(tout.as<const char*>(), PSTR("")) == 0) {
-            result.reason = F("probeSettings.tout is empty");
+        if (strcmp_P(toutSolar.as<const char*>(), PSTR("")) == 0) {
+            result.reason = F("probeSettings.toutSolar is empty");
+            return result;
+        }
+    }
+
+    {
+        JsonVariant toutHeat = obj["toutHeat"];
+
+        if (!toutHeat.as<const char*>()) {
+            result.reason = F("probeSettings.toutHeat is not a string");
+            return result;
+        }
+        if (strcmp_P(toutHeat.as<const char*>(), PSTR("")) == 0) {
+            result.reason = F("probeSettings.toutHeat is empty");
             return result;
         }
     }
