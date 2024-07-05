@@ -2,7 +2,6 @@
 
 using namespace PoolInternals;
 
-//std::vector<IPoolSetting*> __attribute__((init_priority(101))) IPoolSetting::settings;
 std::vector<IPoolSetting*> __attribute__((init_priority(101))) IPoolSetting::settingsConfig;
 std::vector<IPoolSetting*> __attribute__((init_priority(101))) IPoolSetting::settingsProbeOffset;
 std::vector<IPoolSetting*> __attribute__((init_priority(101))) IPoolSetting::settingsProbe;

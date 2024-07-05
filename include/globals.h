@@ -11,7 +11,6 @@
 #include "InterruptButton.h"
 #include "Adafruit_ILI9341.h"
 #include "structures.h"
-#include "Thermistor.h"
 #include "HomieNode.hpp"
 #include "PoolSetting.hpp"
 #include "Smoothed.h"
@@ -21,10 +20,6 @@
 extern OneWire oneWire;
 extern DallasTemperature sensors;
 extern DeviceAddress tempDeviceAddress;
-// 289D6F49F67A3CF8
-extern DeviceAddress tempSensorIn; // = { 0x28, 0x9D, 0x6F, 0x49, 0xF6, 0x7A, 0x3C, 0xF8 };
-// 283E4749F6C13C1A
-extern DeviceAddress tempSensorOut; // = { 0x28, 0x3E, 0x47, 0x49, 0xF6, 0xC1, 0x3C, 0x1A };
 
 extern WiFiUDP ntpUDP;
 extern NTPClient timeClient;
@@ -42,15 +37,11 @@ extern InterruptButton button1;
 
 extern Adafruit_ILI9341 tft;
 
-extern DTSetting tinSettings;
-extern DTSetting toutSettings;
-
-extern ThermistorSettings thermistorAirSettings;
-extern Thermistor thermistorAir;
-extern NTCSetting ntcAirSetting;
-extern ThermistorSettings thermistorPoolSettings;
-extern Thermistor thermistorPool;
-extern NTCSetting ntcPoolSetting;
+extern DTSetting dtSettingTin;
+extern DTSetting dtSettingToutSolar;
+extern DTSetting dtSettingToutHeat;
+extern DTSetting dtSettingPool;
+extern DTSetting dtSettingAir;
 
 extern HomieNode statusNode;
 extern HomieNode valuesNode;
@@ -58,59 +49,61 @@ extern HomieNode configNode;
 
 extern DynamicJsonDocument poolJsonDoc;
 
-extern PoolSetting<uint16_t> poolConfigCloudySetting;
-extern PoolSetting<uint16_t> poolConfigOvercastCntSetting;
-extern PoolSetting<double> poolConfigSunMinElvAMSetting;
-extern PoolSetting<double> poolConfigSunMinElvPMSetting;
-extern PoolSetting<double> poolConfigSetPointSetting;
-extern PoolSetting<double> poolConfigSetPointSwingSetting;
-extern PoolSetting<double> poolConfigAuxHeatDiffSetting;
-extern PoolSetting<double> poolConfigAirPoolDiffSetting;
-extern PoolSetting<uint16_t> poolConfigPoolTempInSetting;
-extern PoolSetting<double> poolConfigPumpGpmSetting;
-extern PoolSetting<double> poolAirOffsetSetting;
-extern PoolSetting<double> poolPoolOffsetSetting;
-extern PoolSetting<double> poolTinOffsetSetting;
-extern PoolSetting<double> poolToutOffsetSetting;
-extern PoolSetting<const char *> poolAirNtcSetting;
-extern PoolSetting<const char *> poolPoolNtcSetting;
-extern PoolSetting<const char *> poolTinDtSetting;
-extern PoolSetting<const char *> poolToutDtSetting;
-extern PoolSetting<int16_t> poolDstOffsetSetting;
-extern PoolSetting<int16_t> poolStOffsetSetting;
-extern PoolSetting<uint16_t> poolDstBeginDaySetting;
-extern PoolSetting<uint16_t> poolDstBeginMonthSetting;
-extern PoolSetting<uint16_t> poolDstEndDaySetting;
-extern PoolSetting<uint16_t> poolDstEndMonthSetting;
-extern PoolSetting<double> poolLatitudeSetting;
-extern PoolSetting<double> poolLongitudeSetting;
+// IPoolSetting::settingsConfig
+extern PoolSetting<uint16_t> settingCloudy;
+extern PoolSetting<uint16_t> settingOvercastCnt;
+extern PoolSetting<double> settingSunMinElvAM;
+extern PoolSetting<double> settingSunMinElvPM;
+extern PoolSetting<double> settingPoolSP;
+extern PoolSetting<double> settingHeatAuxSP;
+extern PoolSetting<double> settingSPHyst;
+extern PoolSetting<double> settingPumpGpm;
+extern PoolSetting<bool> settingHeatAuxEnable;
+// IPoolSetting::settingsTime
+extern PoolSetting<int16_t> settingTimeDstOffset;
+extern PoolSetting<int16_t> settingTimeStOffset;
+extern PoolSetting<uint16_t> settingTimeDstBeginDay;
+extern PoolSetting<uint16_t> settingTimeDstBeginMonth;
+extern PoolSetting<uint16_t> settingTimeDstEndDay;
+extern PoolSetting<uint16_t> settingTimeDstEndMonth;
+// IPoolSetting::settingsLocation
+extern PoolSetting<double> settingLatitude;
+extern PoolSetting<double> settingLongitude;
+// IPoolSetting::settingsProbeOffset
+extern PoolSetting<double> settingAirOffset;
+extern PoolSetting<double> settingPoolOffset;
+extern PoolSetting<double> settingTinOffset;
+extern PoolSetting<double> settingToutSolarOffset;
+extern PoolSetting<double> settingToutHeatOffset;
+// IPoolSetting::settingsProbe
+extern PoolSetting<const char *> settingAirProbeCfg;
+extern PoolSetting<const char *> settingPoolProbeCfg;
+extern PoolSetting<const char *> settingTinProbeCfg;
+extern PoolSetting<const char *> settingToutSolarProbeCfg;
+extern PoolSetting<const char *> settingToutHeatProbeCfg;
 
 extern unsigned long currentMillis;
-extern unsigned long intervalData;
-extern unsigned long previousMillisData;
-extern unsigned long intervalProc;
-extern unsigned long previousMillisProc;
+// Loop Gather
+extern unsigned long intervalGather;
+extern unsigned long prevMillisGather;
+// Loop Control
+extern unsigned long intervalControl;
+extern unsigned long prevMillisControl;
+// Loop MQTT Publish
 extern unsigned long intervalPub;
-extern unsigned long previousMillisPub;
+extern unsigned long prevMillisPub;
+// Loop MQTT Pub Config
 extern unsigned long intervalPubCfg;
-extern unsigned long previousMillisPubCfg;
+extern unsigned long prevMillisPubCfg;
+// Loop Heartbeat
 extern unsigned long intervalHB;
-extern unsigned long previousMillisHB;
+extern unsigned long prevMillisHB;
+// Loop Update Daylight
 extern unsigned long intervalDayLight;
-extern unsigned long previousMillisDaylight;
+extern unsigned long prevMillisDaylight;
 
 extern bool isCloudy;
 extern bool isOvercast;
-extern bool atSetpoint;
-extern bool isHeating;
-extern bool overrideEnv;
-extern bool manualHeatingEnable;
-extern bool manualHeating;
-extern bool envCheckNoSolar;
-extern bool envCheckNoAir;
-extern bool envCheckNoCloud;
-extern bool envCheckNoTDiff;
-extern bool envCheckNoAuxHeatDiff;
 extern bool otaInProgress;
 extern bool firstRun;
 
@@ -119,8 +112,10 @@ extern Smoothed<int16_t> light;
 extern uint16_t cloudyCnt;
 extern Smoothed<int> tin;
 extern bool tinOk;
-extern Smoothed<int> tout;
-extern bool toutOk;
+extern Smoothed<int> toutSolar;
+extern bool toutSolarOk;
+extern Smoothed<int> toutHeat;
+extern bool toutHeatOk;
 extern Smoothed<int> air;
 extern bool airOk;
 extern Smoothed<int> pool;
@@ -133,7 +128,7 @@ extern EasyStringStream status;
 extern DisplayPage displayPage;
 extern char ip[17];
 extern RunStatus runStatus;
-extern bool pumpOn;
-extern bool propaneOn;
-extern bool auxOn;
+extern bool rlyPump;
+extern bool rlyHeatAux;
+extern bool rlyAux;
 extern time_t lastPublishData;

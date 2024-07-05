@@ -12,7 +12,6 @@
 #include "mqtt.h"
 #include "control.h"
 #include "data.h"
-#include "calibration.h"
 
 #include <vector>
 #include <Arduino.h>
@@ -25,7 +24,6 @@
 #include <DallasTemperature.h>
 #include <EasyStringStream.h>
 #include "MCP_ADC.h"
-#include <Thermistor.h>
 #include <ArduinoJson.h>
 #include <WiFiClient.h>
 #include <ESPAsyncWebServer.h>

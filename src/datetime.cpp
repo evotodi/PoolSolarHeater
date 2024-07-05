@@ -12,42 +12,42 @@ time_t getNtpTime() {
 }
 
 int getTimeOffset(const time_t *t, bool asHours) {
-    if (month(*t) == poolDstBeginMonthSetting.get() && day(*t) >= poolDstBeginDaySetting.get()) {
+    if (month(*t) == settingTimeDstBeginMonth.get() && day(*t) >= settingTimeDstBeginDay.get()) {
         if (asHours) {
-            return poolDstOffsetSetting.get();
+            return settingTimeDstOffset.get();
         } else {
-            return poolDstOffsetSetting.get() * 60 * 60;
+            return settingTimeDstOffset.get() * 60 * 60;
         }
     }
 
-    if (month(*t) == poolDstEndMonthSetting.get() && day(*t) <= poolDstEndDaySetting.get()) {
+    if (month(*t) == settingTimeDstEndMonth.get() && day(*t) <= settingTimeDstEndDay.get()) {
         if (asHours) {
-            return poolStOffsetSetting.get();
+            return settingTimeStOffset.get();
         } else {
-            return poolStOffsetSetting.get() * 60 * 60;
+            return settingTimeStOffset.get() * 60 * 60;
         }
     }
 
-    if (month(*t) > poolDstBeginMonthSetting.get() && month(*t) < poolDstEndMonthSetting.get()) {
+    if (month(*t) > settingTimeDstBeginMonth.get() && month(*t) < settingTimeDstEndMonth.get()) {
         if (asHours) {
-            return poolDstOffsetSetting.get();
+            return settingTimeDstOffset.get();
         } else {
-            return poolDstOffsetSetting.get() * 60 * 60;
+            return settingTimeDstOffset.get() * 60 * 60;
         }
     }
 
-    if (month(*t) > poolDstEndMonthSetting.get()) {
+    if (month(*t) > settingTimeDstEndMonth.get()) {
         if (asHours) {
-            return poolStOffsetSetting.get();
+            return settingTimeStOffset.get();
         } else {
-            return poolStOffsetSetting.get() * 60 * 60;
+            return settingTimeStOffset.get() * 60 * 60;
         }
     }
 
     if (asHours) {
-        return poolDstOffsetSetting.get();
+        return settingTimeDstOffset.get();
     } else {
-        return poolDstOffsetSetting.get() * 60 * 60;
+        return settingTimeDstOffset.get() * 60 * 60;
     }
 }
 

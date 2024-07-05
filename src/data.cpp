@@ -4,25 +4,24 @@ void getSolar(Solar * pSolar)
 {
     time_t utc = now();
     // Calculate the solar position, in degrees
-    calcHorizontalCoordinates(utc, poolLatitudeSetting.get(), poolLongitudeSetting.get(), pSolar->azimuth, pSolar->elevation);
+    calcHorizontalCoordinates(utc, settingLatitude.get(), settingLongitude.get(), pSolar->azimuth, pSolar->elevation);
 
-    // // Print results
-//#ifdef DEBUG
-//    Serial.print("Solar Time: ");
-//    Serial.println(utc);
-//    Serial.print(F("Solar Az: "));
-//    Serial.print(_solar->azimuth);
-//    Serial.print(F("°  El: "));
-//    Serial.print(_solar->elevation);
-//    Serial.println(F("°"));
-//#endif
+#ifdef DEBUG
+    Serial.print("Solar Time: ");
+    Serial.println(utc);
+    Serial.print(F("Solar Az: "));
+    Serial.print(pSolar->azimuth);
+    Serial.print(F("°  El: "));
+    Serial.print(pSolar->elevation);
+    Serial.println(F("°"));
+#endif
 }
 
 void getDaylight(Daylight * pDaylight)
 {
     double md;
     time_t utc = now();
-    calcCivilDawnDusk(utc, poolLatitudeSetting.get(), poolLongitudeSetting.get(), pDaylight->transit, pDaylight->sunrise, pDaylight->sunset);
+    calcCivilDawnDusk(utc, settingLatitude.get(), settingLongitude.get(), pDaylight->transit, pDaylight->sunrise, pDaylight->sunset);
     md = ((pDaylight->sunset - pDaylight->sunrise) / 2) + pDaylight->sunrise;
 
     tmElements_t tm;
@@ -52,42 +51,45 @@ void getDaylight(Daylight * pDaylight)
 void addPoolTemp()
 {
 #ifdef FAKE_TEMP_POOL
-    pool.add(FAKE_TEMP_POOL + ntcPoolSetting.offset);
+    pool.add(FAKE_TEMP_POOL + dtSettingPool.offset);
 #else
-    if(poolConfigPoolTempInSetting.get() == 0) {
-        pool.add(tin.getLast());
-    } else if(poolConfigPoolTempInSetting.get() == 1) {
-        pool.add(FtoI(float(thermistorPool.readTempF(ntcPoolSetting.pin)) + ntcPoolSetting.offset));
-    }else{
-        Homie.getLogger() << F("✖ Invalid poolTemp type: ") << poolConfigPoolTempInSetting.get() << endl;
-    }
+    pool.add(FtoI(sensors.getTempF(dtSettingPool.daddr) + dtSettingPool.offset));
 #endif
 }
 
 void addAirTemp()
 {
 #ifdef FAKE_TEMP_AIR
-    air.add(FAKE_TEMP_AIR + ntcAirSetting.offset);
+    air.add(FAKE_TEMP_AIR + dtSettingAir.offset);
 #else
-    air.add(FtoI(float(thermistorAir.readTempF(ntcAirSetting.pin)) + ntcAirSetting.offset));
+    air.add(FtoI(sensors.getTempF(dtSettingAir.daddr) + dtSettingAir.offset));
 #endif
 }
 
 void addTInTemp()
 {
 #ifdef FAKE_TEMP_TIN
-    tin.add(FAKE_TEMP_TIN + tinSettings.offset);
+    tin.add(FAKE_TEMP_TIN + dtSettingTin.offset);
 #else
-    tin.add(FtoI(sensors.getTempF(tempSensorIn) + tinSettings.offset));
+    tin.add(FtoI(sensors.getTempF(dtSettingTin.daddr) + dtSettingTin.offset));
 #endif
 }
 
-void addTOutTemp()
+void addTOutSolarTemp()
 {
 #ifdef FAKE_TEMP_TOUT
-    tout.add(FAKE_TEMP_TOUT + toutSettings.offset);
+    toutSolar.add(FAKE_TEMP_TOUT + dtSettingToutSolar.offset);
 #else
-    tout.add(FtoI(sensors.getTempF(tempSensorOut) + toutSettings.offset));
+    toutSolar.add(FtoI(sensors.getTempF(dtSettingToutSolar.daddr) + dtSettingToutSolar.offset));
+#endif
+}
+
+void addTOutHeatTemp()
+{
+#ifdef FAKE_TEMP_TOUT
+    toutSolar.add(FAKE_TEMP_TOUT + dtSettingToutHeat.offset);
+#else
+    toutSolar.add(FtoI(sensors.getTempF(dtSettingToutHeat.daddr) + dtSettingToutHeat.offset));
 #endif
 }
 
@@ -103,17 +105,19 @@ void addLight()
 bool checkTempSensors() {
     poolOk = true;
     tinOk = true;
-    toutOk = true;
+    toutSolarOk = true;
+    toutHeatOk = true;
     airOk = true;
 #ifdef NO_CHECK_SENSORS_OK
     return true;
 #endif
     if (pool.get() <= T_SENSOR_BAD) poolOk = false;
     if (tin.get() <= T_SENSOR_BAD) tinOk = false;
-    if (tout.get() <= T_SENSOR_BAD) toutOk = false;
+    if (toutSolar.get() <= T_SENSOR_BAD) toutSolarOk = false;
+    if (toutHeat.get() <= T_SENSOR_BAD) toutHeatOk = false;
     if (air.get() <= T_SENSOR_BAD) airOk = false;
 
-    if (poolOk && tinOk && toutOk && airOk) return true;
+    if (poolOk && tinOk && toutSolarOk && toutHeatOk && airOk) return true;
 
     setRunStatus(RunStatus::ERROR, true);
     return false;
@@ -155,8 +159,7 @@ const char * getRunStatusStr() {
     return "ERROR";
 }
 
-void setupOwSensors()
-{
+void setupOwSensors() {
     Homie.getLogger() << "Locating one wire devices..." << endl;
     displayCenterMessage("1Wire...");
 
@@ -192,26 +195,25 @@ void setupOwSensors()
         }
     }
 
-    if (sensors.isConnected(tempSensorIn)) {
-        Homie.getLogger() << "Temp sensor IN Address: ";
-        printAddress(tempSensorIn);
-        Homie.getLogger() << endl;
-        Homie.getLogger() << "Temp sensor IN resolution: ";
-        Homie.getLogger().print(sensors.getResolution(tempSensorIn), DEC);
-        Homie.getLogger() << endl;
-    } else {
-        Homie.getLogger() << "Temp sensor IN is not connected !" << endl;
-    }
+    DTSetting devices[] = {
+            {dtSettingAir},
+            {dtSettingPool},
+            {dtSettingTin},
+            {dtSettingToutSolar},
+            {dtSettingToutHeat},
+    };
 
-    if (sensors.isConnected(tempSensorOut)) {
-        Homie.getLogger() << "Temp sensor OUT Address: ";
-        printAddress(tempSensorOut);
-        Homie.getLogger() << endl;
-        Homie.getLogger() << "Temp sensor OUT resolution: ";
-        Homie.getLogger().print(sensors.getResolution(tempSensorOut), DEC);
-        Homie.getLogger() << endl;
-    } else {
-        Homie.getLogger() << "Temp sensor OUT is not connected !" << endl;
+    for (size_t i = 0; i < sizeof(devices); i++) {
+        if (sensors.isConnected(devices[i].daddr)) {
+            Homie.getLogger() << "Temp sensor " << devices[i].name << " address: ";
+            printAddress(devices[i].daddr);
+            Homie.getLogger() << endl;
+            Homie.getLogger() << "Temp sensor " << devices[i].name << " resolution: ";
+            Homie.getLogger().print(sensors.getResolution(devices[i].daddr), DEC);
+            Homie.getLogger() << endl;
+        } else {
+            Homie.getLogger() << "Temp sensor " << devices[i].name << " is not connected !" << endl;
+        }
     }
 }
 

@@ -41,29 +41,33 @@ float calcWatts(float tempIn, float tempOut, float gpm) {
     return rtn;
 }
 
-void parseNTCSettings(ThermistorSettings *ts, const char *settings, const char *name) {
-    sscanf(settings, "vcc=%lf;adcRef=%lf;serRes=%lf", // NOLINT(cert-err34-c)
-           &ts->vcc, &ts->analogReference, &ts->seriesResistor
-    );
-
-    Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
-    Homie.getLogger() << "VCC = " << ts->vcc << endl;
-    Homie.getLogger() << "ADC Ref = " << ts->analogReference << endl;
-    Homie.getLogger() << "Ser Res = " << ts->seriesResistor << endl;
-    Homie.getLogger() << endl;
-}
-
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat"
 
 void parseDTSettings(DTSetting *pDTSetting, const char *settings, double offset, const char *name) {
-    sscanf(settings, "addr=%[0-9a-fA-F]", &pDTSetting->addr); // NOLINT(cert-err34-c)
+    sscanf(settings, "addr=%[0-9a-fA-F]", &pDTSetting->addrStr); // NOLINT(cert-err34-c)
     pDTSetting->offset = float(offset);
 
+    strToAddress(pDTSetting->addrStr, pDTSetting->daddr);
+
     Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
-    Homie.getLogger() << "Address = " << pDTSetting->addr << endl;
+    Homie.getLogger() << "Address = " << pDTSetting->addrStr << endl;
     Homie.getLogger() << "Offset = " << pDTSetting->offset << endl;
     Homie.getLogger() << endl;
 }
 
 #pragma clang diagnostic pop
+
+bool strToBool(const char * str) {
+    String string = str;
+    string.toLowerCase();
+
+    if (strcmp(string.c_str(), "true") == 0) {
+        return true;
+    }
+    else if (strcmp(string.c_str(), "1") == 0) {
+        return true;
+    }
+
+    return false;
+}

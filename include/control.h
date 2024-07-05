@@ -9,14 +9,9 @@
 #include <Homie.h>
 
 void doProcess();
-bool heatOn();
-bool heatOff();
 void setPumpOn();
 void setPumpOff();
-void setAuxHeatOn();
-void setAuxHeatOff();
+void setHeatAuxOn();
+void setHeatAuxOff();
 void setAuxOn();
 void setAuxOff();
-
-bool envAllowHeat();
-

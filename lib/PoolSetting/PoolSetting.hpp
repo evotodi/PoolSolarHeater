@@ -6,17 +6,10 @@
 #include <functional>
 #include "Arduino.h"
 
-//#include "./Homie/Datatypes/Callbacks.hpp"
-
 namespace PoolInternals {
-//    class HomieClass;
-//    class Config;
-//    class Validation;
-//    class BootConfig;
 
     class IPoolSetting {
     public:
-//        static std::vector<IPoolSetting*> settings;
         static std::vector<IPoolSetting*> settingsConfig;
         static std::vector<IPoolSetting*> settingsProbeOffset;
         static std::vector<IPoolSetting*> settingsProbe;
@@ -40,17 +33,11 @@ namespace PoolInternals {
         const char *_description;
         bool _required;
         bool _provided;
-//    public:
-//        std::vector<IPoolSetting *> *_settings;
     };
 }  // namespace PoolInternals
 
 template<class T>
 class PoolSetting : public PoolInternals::IPoolSetting {
-//    friend PoolInternals::HomieClass;
-//    friend PoolInternals::Config;
-//    friend PoolInternals::Validation;
-//    friend PoolInternals::BootConfig;
 
 public:
     PoolSetting(const char *name, const char *description, std::vector<IPoolSetting *> *settings);

@@ -1,13 +1,10 @@
 #pragma once
 
 struct DTSetting {
-    char addr[18];
+    char addrStr[18];
     float offset; // This is stored in spiffs pool/config.json
-};
-
-struct NTCSetting {
-    uint8_t pin;
-    float offset; // This is stored in spiffs pool/config.json
+    DeviceAddress daddr;
+    char name[16];
 };
 
 struct Solar {

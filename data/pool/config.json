@@ -2,14 +2,13 @@
   "config": {
     "cloudy": 3550,
     "overcastCnt": 200,
-    "sunMinElvAM": 50.0,
+    "sunMinElvAM": 40.0,
     "sunMinElvPM": 22.0,
-    "setPoint": 92.0,
-    "setPointSwing": 2.0,
-    "auxHeatTempDiff": 10.0,
-    "airPoolDiff": 10.0,
-    "poolTempIn": 1,
-    "pumpGpm": 25.0
+    "poolSP": 92.0,
+    "heatAuxSP": 90.0,
+    "spHyst": 2.0,
+    "pumpGpm": 25.0,
+    "heatAuxEnable": true
   },
   "time": {
     "dstOffset": -4,
@@ -27,12 +26,14 @@
     "air": 0.0,
     "pool": 0.0,
     "tin": 0.0,
-    "tout": 0.0
+    "toutSolar": 0.0,
+    "toutHeat": 0.0
   },
   "probeSettings": {
-    "air": "vcc=5.0;adcRef=5.0;serRes=120000",
-    "pool": "vcc=5.0;adcRef=5.0;serRes=9700",
+    "air": "addr=283E4749F6C13C1A",
+    "pool": "addr=283E4749F6C13C1A",
     "tin": "addr=289D6F49F67A3CF8",
-    "tout": "addr=283E4749F6C13C1A"
+    "toutSolar": "addr=283E4749F6C13C1A",
+    "toutHeat": "addr=283E4749F6C13C1A"
   }
 }

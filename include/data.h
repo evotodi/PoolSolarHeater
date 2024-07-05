@@ -24,7 +24,8 @@ void getDaylight(Daylight * pDaylight);
 void addPoolTemp();
 void addAirTemp();
 void addTInTemp();
-void addTOutTemp();
+void addTOutSolarTemp();
+void addTOutHeatTemp();
 void addLight();
 
 bool checkTempSensors();

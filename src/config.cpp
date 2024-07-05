@@ -129,40 +129,41 @@ void configWrite() {
     poolJsonDoc.clear();
 
     JsonObject config = poolJsonDoc.createNestedObject("config");
-    config["cloudy"] = poolConfigCloudySetting.get();
-    config["overcastCnt"] = poolConfigOvercastCntSetting.get();
-    config["sunMinElvAM"] = poolConfigSunMinElvAMSetting.get();
-    config["sunMinElvPM"] = poolConfigSunMinElvPMSetting.get();
-    config["setPoint"] = poolConfigSetPointSetting.get();
-    config["setPointSwing"] = poolConfigSetPointSwingSetting.get();
-    config["auxHeatTempDiff"] = poolConfigAuxHeatDiffSetting.get();
-    config["airPoolDiff"] = poolConfigAirPoolDiffSetting.get();
-    config["poolTempIn"] = poolConfigPoolTempInSetting.get();
-    config["pumpGpm"] = poolConfigPumpGpmSetting.get();
+    config["cloudy"] = settingCloudy.get();
+    config["overcastCnt"] = settingOvercastCnt.get();
+    config["sunMinElvAM"] = settingSunMinElvAM.get();
+    config["sunMinElvPM"] = settingSunMinElvPM.get();
+    config["poolSP"] = settingPoolSP.get();
+    config["heatAuxSP"] = settingHeatAuxSP.get();
+    config["spHyst"] = settingSPHyst.get();
+    config["pumpGpm"] = settingPumpGpm.get();
+    config["heatAuxEnable"] = settingHeatAuxEnable.get();
 
     JsonObject probeOffsets = poolJsonDoc.createNestedObject("probeOffsets");
-    probeOffsets["air"] = poolAirOffsetSetting.get();
-    probeOffsets["pool"] = poolPoolOffsetSetting.get();
-    probeOffsets["tin"] = poolTinOffsetSetting.get();
-    probeOffsets["tout"] = poolToutOffsetSetting.get();
+    probeOffsets["air"] = settingAirOffset.get();
+    probeOffsets["pool"] = settingPoolOffset.get();
+    probeOffsets["tin"] = settingTinOffset.get();
+    probeOffsets["toutSolar"] = settingToutSolarOffset.get();
+    probeOffsets["toutHeat"] = settingToutHeatOffset.get();
 
     JsonObject probeSettings = poolJsonDoc.createNestedObject("probeSettings");
-    probeSettings["air"] = poolAirNtcSetting.get();
-    probeSettings["pool"] = poolPoolNtcSetting.get();
-    probeSettings["tin"] = poolTinDtSetting.get();
-    probeSettings["tout"] = poolToutDtSetting.get();
+    probeSettings["air"] = settingAirProbeCfg.get();
+    probeSettings["pool"] = settingPoolProbeCfg.get();
+    probeSettings["tin"] = settingTinProbeCfg.get();
+    probeSettings["toutSolar"] = settingToutSolarProbeCfg.get();
+    probeSettings["toutHeat"] = settingToutHeatProbeCfg.get();
 
     JsonObject time = poolJsonDoc.createNestedObject("time");
-    time["dstOffset"] = poolDstOffsetSetting.get();
-    time["stOffset"] = poolStOffsetSetting.get();
-    time["dstBeginDay"] = poolDstBeginDaySetting.get();
-    time["dstBeginMonth"] = poolDstBeginMonthSetting.get();
-    time["dstEndDay"] = poolDstEndDaySetting.get();
-    time["dstEndMonth"] = poolDstEndMonthSetting.get();
+    time["dstOffset"] = settingTimeDstOffset.get();
+    time["stOffset"] = settingTimeStOffset.get();
+    time["dstBeginDay"] = settingTimeDstBeginDay.get();
+    time["dstBeginMonth"] = settingTimeDstBeginMonth.get();
+    time["dstEndDay"] = settingTimeDstEndDay.get();
+    time["dstEndMonth"] = settingTimeDstEndMonth.get();
 
     JsonObject location = poolJsonDoc.createNestedObject("location");
-    location["latitude"] = poolLatitudeSetting.get();
-    location["longitude"] = poolLongitudeSetting.get();
+    location["latitude"] = settingLatitude.get();
+    location["longitude"] = settingLongitude.get();
 
     SPIFFS.remove(CONFIG_PATH);
 
@@ -187,8 +188,9 @@ void configWrite() {
 }
 
 void configUpdateStructs() {
-    ntcAirSetting.offset = float(poolAirOffsetSetting.get());
-    ntcPoolSetting.offset = float(poolPoolOffsetSetting.get());
-    tinSettings.offset = float(poolTinOffsetSetting.get());
-    toutSettings.offset = float(poolToutOffsetSetting.get());
+    dtSettingAir.offset = float(settingAirOffset.get());
+    dtSettingPool.offset = float(settingPoolOffset.get());
+    dtSettingTin.offset = float(settingTinOffset.get());
+    dtSettingToutSolar.offset = float(settingToutSolarOffset.get());
+    dtSettingToutHeat.offset = float(settingToutHeatOffset.get());
 }

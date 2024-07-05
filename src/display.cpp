@@ -65,23 +65,23 @@ void displayPageMainUpdate() {
     // Pump
     tft.fillRect(w * 9, h * 3, tft.width(), h, TFT_BLACK);
     tft.setCursor(w * 9, h * 3);
-    if (pumpOn) {
+    if (rlyPump) {
         tft.setTextColor(TFT_GREEN);
     } else {
         tft.setTextColor(TFT_YELLOW);
     }
-    tft.print(boolToStr(pumpOn));
+    tft.print(boolToStr(rlyPump));
     tft.setTextColor(TFT_WHITE);
 
     // Propane
     tft.fillRect(w * 9, h * 4, tft.width(), h, TFT_BLACK);
     tft.setCursor(w * 9, h * 4);
-    if (propaneOn) {
+    if (rlyHeatAux) {
         tft.setTextColor(TFT_GREEN);
     } else {
         tft.setTextColor(TFT_YELLOW);
     }
-    tft.print(boolToStr(propaneOn));
+    tft.print(boolToStr(rlyHeatAux));
     tft.setTextColor(TFT_WHITE);
 
     // Pool
@@ -106,14 +106,25 @@ void displayPageMainUpdate() {
     }
     tft.setTextColor(TFT_WHITE);
 
-    // Temp OUT
+    // Temp OUT Solar
     tft.fillRect(w * 6, h * 8, tft.width(), h, TFT_BLACK);
     tft.setCursor(w * 6, h * 8);
-    if (!toutOk) {
+    if (!toutSolarOk) {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");
     } else {
-        tft.printf("%.1f", ItoF(tout.get()));
+        tft.printf("%.1f", ItoF(toutSolar.get()));
+    }
+    tft.setTextColor(TFT_WHITE);
+
+    // Temp OUT Heat
+    tft.fillRect(w * 6, h * 8, tft.width(), h, TFT_BLACK);
+    tft.setCursor(w * 6, h * 8);
+    if (!toutHeatOk) {
+        tft.setTextColor(TFT_PINK);
+        tft.print("ERROR");
+    } else {
+        tft.printf("%.1f", ItoF(toutHeat.get()));
     }
     tft.setTextColor(TFT_WHITE);
 
@@ -148,19 +159,18 @@ void displayPageInfo() {
 
     tft.printf("Pool:  %.1f\n", ItoF(pool.get()));
     tft.printf("T-In:  %.1f\n", ItoF(tin.get()));
-    tft.printf("T-Out: %.1f\n", ItoF(tout.get()));
+    tft.printf("T-Solar: %.1f\n", ItoF(toutSolar.get()));
+    tft.printf("T-Heat: %.1f\n", ItoF(toutHeat.get()));
     tft.printf("Air: %.1f\n", ItoF(air.get()));
     tft.printf("Light: %d\n", light.get());
-    tft.printf("SP: %.1f\n", poolConfigSetPointSetting.get());
-    tft.printf("Swing: %.1f\n", poolConfigSetPointSwingSetting.get());
-    tft.printf("AuxHeat Diff: %.1f\n", poolConfigAuxHeatDiffSetting.get());
+    tft.printf("Pool SP: %.1f\n", settingPoolSP.get());
+    tft.printf("Heat SP: %.1f\n", settingHeatAuxSP.get());
+    tft.printf("Swing: %.1f\n", settingSPHyst.get());
     tft.printf("Az: %.4f\n", solar.azimuth);
     tft.printf("Elv: %.4f\n", solar.elevation);
     tft.printf("Watts: %d\n", watts.get());
     tft.printf("Cloudy: %s\n", boolToStr(isCloudy));
     tft.printf("Overcast: %s\n", boolToStr(isOvercast));
-    tft.printf("At SP: %s\n", boolToStr(atSetpoint));
-    tft.printf("Env Override: %s\n", boolToStr(overrideEnv));
     tft.printf("IP: %s\n", ip);
     tft.printf("Version: %s\n", VERSION);
     tft.printf("Status: %s\n", status.get());

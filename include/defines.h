@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERSION "2.1.63"
+#define VERSION "2.1.72"
 
 // Debugging Defines >>>
 #define DEBUG 1
@@ -14,8 +14,8 @@
 #define PRINT_POOL_CONFIG_ON_READ_WRITE 1
 // <<< Debugging Defines
 
-#define LOOP_DAT_DLY          (5*1E3)
-#define LOOP_PROC_DLY         (5*1E3)
+#define LOOP_GATHER_DLY          (5*1E3)
+#define LOOP_CONTROL_DLY         (5*1E3)
 #define LOOP_PUB_DLY         (15*1E3)
 #define LOOP_PUB_CFG_DLY     (60*1E3)
 #define LOOP_HB_DLY           (5*1E3)
