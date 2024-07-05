@@ -11,9 +11,10 @@
 
 // Debugging Defines >>>
 // The FAKE_TEMP_XXX values are for example 92.5 = 925
-#define FAKE_TEMP_POOL 925
+#define FAKE_TEMP_POOL 776
 #define FAKE_TEMP_TIN 925
-#define FAKE_TEMP_TOUT 973
+#define FAKE_TEMP_TOUT_SOLAR 973
+#define FAKE_TEMP_TOUT_HEAT_AUX 973
 #define FAKE_TEMP_AIR 834
 #define FAKE_LIGHT 4500
 // <<< Debugging Defines

@@ -3,8 +3,8 @@
 struct DTSetting {
     char addrStr[18];
     float offset; // This is stored in spiffs pool/config.json
-    DeviceAddress daddr;
     char name[16];
+    DeviceAddress daddr;
 };
 
 struct Solar {

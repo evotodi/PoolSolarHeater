@@ -44,13 +44,13 @@ float calcWatts(float tempIn, float tempOut, float gpm) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat"
 
-void parseDTSettings(DTSetting *pDTSetting, const char *settings, double offset, const char *name) {
+void parseDTSettings(DTSetting *pDTSetting, const char *settings, double offset) {
     sscanf(settings, "addr=%[0-9a-fA-F]", &pDTSetting->addrStr); // NOLINT(cert-err34-c)
     pDTSetting->offset = float(offset);
 
     strToAddress(pDTSetting->addrStr, pDTSetting->daddr);
 
-    Homie.getLogger() << "Parsed " << name << " settings = >>>" << settings << "<<<" << endl;
+    Homie.getLogger() << "Parsed " << pDTSetting->name << " settings = \"" << settings << "\"" << endl;
     Homie.getLogger() << "Address = " << pDTSetting->addrStr << endl;
     Homie.getLogger() << "Offset = " << pDTSetting->offset << endl;
     Homie.getLogger() << endl;

@@ -28,11 +28,11 @@ void displayPageMain() {
     tft.println("");
     tft.println("");
     tft.println("Pump:    ");
-    tft.println("Propane: ");
-    tft.println("");
+    tft.println("HeatAux: ");
     tft.println("Pool : ");
     tft.println("TIn  : ");
-    tft.println("TOut : ");
+    tft.println("Solar: ");
+    tft.println("Heat : ");
     tft.println("Air  : ");
     tft.println("Watts: ");
     tft.println("Post: ");
@@ -85,8 +85,8 @@ void displayPageMainUpdate() {
     tft.setTextColor(TFT_WHITE);
 
     // Pool
-    tft.fillRect(w * 6, h * 6, tft.width(), h, TFT_BLACK);
-    tft.setCursor(w * 6, h * 6);
+    tft.fillRect(w * 6, h * 5, tft.width(), h, TFT_BLACK);
+    tft.setCursor(w * 6, h * 5);
     if (!poolOk) {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");
@@ -96,8 +96,8 @@ void displayPageMainUpdate() {
     tft.setTextColor(TFT_WHITE);
 
     // Temp IN
-    tft.fillRect(w * 6, h * 7, tft.width(), h, TFT_BLACK);
-    tft.setCursor(w * 6, h * 7);
+    tft.fillRect(w * 6, h * 6, tft.width(), h, TFT_BLACK);
+    tft.setCursor(w * 6, h * 6);
     if (!tinOk) {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");
@@ -107,8 +107,8 @@ void displayPageMainUpdate() {
     tft.setTextColor(TFT_WHITE);
 
     // Temp OUT Solar
-    tft.fillRect(w * 6, h * 8, tft.width(), h, TFT_BLACK);
-    tft.setCursor(w * 6, h * 8);
+    tft.fillRect(w * 6, h * 7, tft.width(), h, TFT_BLACK);
+    tft.setCursor(w * 6, h * 7);
     if (!toutSolarOk) {
         tft.setTextColor(TFT_PINK);
         tft.print("ERROR");

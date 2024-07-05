@@ -77,8 +77,8 @@ void addTInTemp()
 
 void addTOutSolarTemp()
 {
-#ifdef FAKE_TEMP_TOUT
-    toutSolar.add(FAKE_TEMP_TOUT + dtSettingToutSolar.offset);
+#ifdef FAKE_TEMP_TOUT_SOLAR
+    toutSolar.add(FAKE_TEMP_TOUT_SOLAR + dtSettingToutSolar.offset);
 #else
     toutSolar.add(FtoI(sensors.getTempF(dtSettingToutSolar.daddr) + dtSettingToutSolar.offset));
 #endif
@@ -86,10 +86,10 @@ void addTOutSolarTemp()
 
 void addTOutHeatTemp()
 {
-#ifdef FAKE_TEMP_TOUT
-    toutSolar.add(FAKE_TEMP_TOUT + dtSettingToutHeat.offset);
+#ifdef FAKE_TEMP_TOUT_HEAT_AUX
+    toutHeat.add(FAKE_TEMP_TOUT_HEAT_AUX + dtSettingToutHeat.offset);
 #else
-    toutSolar.add(FtoI(sensors.getTempF(dtSettingToutHeat.daddr) + dtSettingToutHeat.offset));
+    toutHeat.add(FtoI(sensors.getTempF(dtSettingToutHeat.daddr) + dtSettingToutHeat.offset));
 #endif
 }
 
@@ -217,7 +217,8 @@ void setupOwSensors() {
         }
     }
 
-    DTSetting devices[] = {
+    const uint8_t devicesSize = 5;
+    DTSetting devices[devicesSize] = {
             {dtSettingAir},
             {dtSettingPool},
             {dtSettingTin},
@@ -225,7 +226,7 @@ void setupOwSensors() {
             {dtSettingToutHeat},
     };
 
-    for (size_t i = 0; i < sizeof(devices); i++) {
+    for (size_t i = 0; i < devicesSize; i++) {
         if (sensors.isConnected(devices[i].daddr)) {
             Homie.getLogger() << "Temp sensor " << devices[i].name << " address: ";
             printAddress(devices[i].daddr);

@@ -28,11 +28,11 @@ InterruptButton button1(BTN1_PIN, LOW);
 Adafruit_ILI9341 tft = Adafruit_ILI9341(&SPI, TFT_DC, TFT_CS, TFT_RST);
 
 /* >>> These struct values will be changed when loading the spiffs config file */
-DTSetting dtSettingTin = {"0000000000000000", float(0)};
-DTSetting dtSettingToutSolar = {"0000000000000000", float(0)};
-DTSetting dtSettingToutHeat = {"0000000000000000", float(0)};
-DTSetting dtSettingPool = {"0000000000000000", float(0)};
-DTSetting dtSettingAir = {"0000000000000000", float(0)};
+DTSetting dtSettingTin = {"0000000000000000", float(0), "TIn"};
+DTSetting dtSettingToutSolar = {"0000000000000000", float(0), "TOutSolar"};
+DTSetting dtSettingToutHeat = {"0000000000000000", float(0), "TOutHeat"};
+DTSetting dtSettingPool = {"0000000000000000", float(0), "Pool"};
+DTSetting dtSettingAir = {"0000000000000000", float(0), "Air"};
 
 /* <<< */
 
@@ -279,19 +279,19 @@ void setupHandler() {
     Homie.getLogger() << "settingAirOffset: " << settingAirOffset.get() << endl;
 
 
-    parseDTSettings(&dtSettingTin, settingTinProbeCfg.get(), settingTinOffset.get(), "Tin");
+    parseDTSettings(&dtSettingTin, settingTinProbeCfg.get(), settingTinOffset.get());
     yield();
 
-    parseDTSettings(&dtSettingToutSolar, settingToutSolarProbeCfg.get(), settingToutSolarOffset.get(), "ToutSolar");
+    parseDTSettings(&dtSettingToutSolar, settingToutSolarProbeCfg.get(), settingToutSolarOffset.get());
     yield();
 
-    parseDTSettings(&dtSettingToutHeat, settingToutHeatProbeCfg.get(), settingToutHeatOffset.get(), "ToutHeat");
+    parseDTSettings(&dtSettingToutHeat, settingToutHeatProbeCfg.get(), settingToutHeatOffset.get());
     yield();
 
-    parseDTSettings(&dtSettingPool, settingPoolProbeCfg.get(), settingPoolOffset.get(), "Pool");
+    parseDTSettings(&dtSettingPool, settingPoolProbeCfg.get(), settingPoolOffset.get());
     yield();
 
-    parseDTSettings(&dtSettingAir, settingAirProbeCfg.get(), settingAirOffset.get(), "Tout");
+    parseDTSettings(&dtSettingAir, settingAirProbeCfg.get(), settingAirOffset.get());
     yield();
 
     setupOwSensors();
@@ -514,7 +514,7 @@ void loopGatherProcess() {
 }
 
 void loopControl() {
-    Homie.getLogger() << "PROCESS:" << endl;
+    Homie.getLogger() << "CONTROL:" << endl;
     button1.processSyncEvents();
 
     // Check if pool wants heat
