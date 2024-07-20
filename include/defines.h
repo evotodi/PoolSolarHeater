@@ -39,7 +39,7 @@
 #define BTN2_PIN         14 // Button 2
 #define TFT_CS           15
 #define TFT_RST          16
-#define PIN_AUX_17       17
+#define TFT_LED          17
 #define SPI_CLK          18 // MCP_CLK, DISP_SCK
 #define SPI_MISO         19 // MCP_DOUT, DISP_MISO
 #define LED_PIN          21
@@ -48,12 +48,12 @@
 #define PUMP_RLY_PIN     25
 #define AUX_HEAT_RLY_PIN 26
 #define AUX_RLY_PIN      27
-#define TFT_LED          32
+#define PIN_AUX_32       32
 #define TFT_DC           33
 #define PIN_AUX_34       34
 #define BTN1_PIN         35
-#define PIN_AUX_36_I     36 // SPARE Input Only
-#define PIN_AUX_39_I     39 // SPARE Input Only
+//#define PIN_AUX_36_I     36 // SPARE Input Only
+//#define PIN_AUX_39_I     39 // SPARE Input Only
 
 // MCP3204 ADC Ports
 #define ADC_LIGHT      0
