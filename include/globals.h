@@ -33,7 +33,7 @@ extern MCP3204 mcp;
 extern Oversampling adc;
 
 extern InterruptButton button1;
-//extern InterruptButton button2;
+extern InterruptButton button2;
 
 extern Adafruit_ILI9341 tft;
 
@@ -134,3 +134,11 @@ extern bool rlyPump;
 extern bool rlyHeatAux;
 extern bool rlyAux;
 extern time_t lastPublishData;
+
+extern TextSize txtSize;
+extern ConfigPageItem configPageSelection;
+extern CfgPageItemData configPageItemsData[ConfigPageItem::CFG_PG_LAST_NUM_OF_PAGES];
+extern std::basic_string<char> cfgVal;
+extern uint8_t cfgValAtCur;
+extern uint8_t cfgValAtCurOrig;
+extern int8_t cfgValCursor;

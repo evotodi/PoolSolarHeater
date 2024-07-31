@@ -23,7 +23,7 @@ MCP3204 mcp(&SPI);
 Oversampling adc(10, 12, 2);
 
 InterruptButton button1(BTN1_PIN, LOW);
-// InterruptButton button2(BTN2_PIN, LOW);
+InterruptButton button2(BTN2_PIN, LOW);
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(&SPI, TFT_DC, TFT_CS, TFT_RST);
 
@@ -74,6 +74,8 @@ PoolSetting<const char *> settingPoolProbeCfg("pool", "pool kv", &PoolInternals:
 PoolSetting<const char *> settingTinProbeCfg("tin", "tin kv", &PoolInternals::IPoolSetting::settingsProbe);
 PoolSetting<const char *> settingToutSolarProbeCfg("toutSolar", "tout Solar kv", &PoolInternals::IPoolSetting::settingsProbe);
 PoolSetting<const char *> settingToutHeatProbeCfg("toutHeat", "tout Heat kv", &PoolInternals::IPoolSetting::settingsProbe);
+
+TextSize txtSize = TextSize();
 
 unsigned long currentMillis = 0;
 // Loop Gather
@@ -128,6 +130,8 @@ bool rlyPump = false;
 bool rlyHeatAux = false;
 bool rlyAux = false;
 time_t lastPublishData = 0;
+ConfigPageItem configPageSelection = ConfigPageItem(0);
+CfgPageItemData configPageItemsData[ConfigPageItem::CFG_PG_LAST_NUM_OF_PAGES];
 
 void setup() {
     pinMode(LED_PIN, OUTPUT);
@@ -135,7 +139,7 @@ void setup() {
     pinMode(AUX_HEAT_RLY_PIN, OUTPUT);
     pinMode(AUX_RLY_PIN, OUTPUT);
     pinMode(BTN1_PIN, INPUT);
-    // pinMode(BTN2_PIN, INPUT);
+    pinMode(BTN2_PIN, INPUT);
     pinMode(TFT_LED, OUTPUT);
     pinMode(TFT_CS, OUTPUT);
     pinMode(PIN_ENABLE, INPUT);
@@ -150,6 +154,8 @@ void setup() {
     digitalWrite(TFT_LED, HIGH);
     digitalWrite(TFT_CS, HIGH);
     tft.begin();
+    txtSize.init(&tft);
+
 #ifdef DEBUG
     // read diagnostics (optional but can help debug problems)
     uint8_t x = tft.readcommand8(ILI9341_RDMODE);
@@ -245,6 +251,7 @@ void setup() {
 
     displayCenterMessage("Homie\nStartup...");
     Homie.setup();
+    setupConfigPageItems();
 }
 
 void loop() {
@@ -315,7 +322,7 @@ void setupHandler() {
 
 void loopHandler() {
     currentMillis = millis();
-    button1.processSyncEvents();
+    processBtnSyncEvents();
 
     if (!otaInProgress) {
         // Loop Gather data
@@ -325,7 +332,7 @@ void loopHandler() {
             prevMillisGather = currentMillis;
         }
         yield();
-        button1.processSyncEvents();
+        processBtnSyncEvents();
 
         // Loop Control
         if (currentMillis - prevMillisControl > intervalControl || prevMillisControl == 0) {
@@ -333,7 +340,7 @@ void loopHandler() {
             prevMillisControl = currentMillis;
         }
         yield();
-        button1.processSyncEvents();
+        processBtnSyncEvents();
 
         // Loop Publish data
         if (currentMillis - prevMillisPub > intervalPub || prevMillisPub == 0) {
@@ -341,7 +348,7 @@ void loopHandler() {
             prevMillisPub = currentMillis;
         }
         yield();
-        button1.processSyncEvents();
+        processBtnSyncEvents();
 
         // Loop Publish Config
         if (currentMillis - prevMillisPubCfg > intervalPubCfg || prevMillisPubCfg == 0) {
@@ -349,7 +356,7 @@ void loopHandler() {
             prevMillisPubCfg = currentMillis;
         }
         yield();
-        button1.processSyncEvents();
+        processBtnSyncEvents();
     }
 
     // Loop Update Daylight
@@ -358,7 +365,7 @@ void loopHandler() {
         prevMillisDaylight = currentMillis;
     }
     yield();
-    button1.processSyncEvents();
+    processBtnSyncEvents();
 
     // Loop Heartbeat
     if (currentMillis - prevMillisHB > intervalHB || prevMillisHB == 0) {
@@ -381,7 +388,7 @@ void loopGatherData() {
     }
 
     sensors.requestTemperatures();
-    button1.processSyncEvents();
+    processBtnSyncEvents();
     delay(100);
     addTInTemp();
     Homie.getLogger() << "Tin = " << ItoF(tin.getLast()) << " °F  Tin Smooth = " << ItoF(tin.get()) << " °F " << endl;
@@ -448,7 +455,7 @@ void loopGatherData() {
     if (!toutHeatOk) status << "SENSOR: Temp heat out error\n";
     if (!airOk) status << "SENSOR: Air error\n";
 
-    button1.processSyncEvents();
+    processBtnSyncEvents();
     if (displayPage == DisplayPage::DISP_MAIN) {
         displayPageMainUpdate();
     } else if (displayPage == DisplayPage::DISP_INFO) {
@@ -465,7 +472,7 @@ void loopGatherProcess() {
         setHeatAuxOff();
         wantsHeat = false;
         setRunStatus(RunStatus::OFF, true);
-        button1.processSyncEvents();
+        processBtnSyncEvents();
         return;
     }
 
@@ -482,7 +489,7 @@ void loopGatherProcess() {
             setHeatAuxOff();
             setRunStatus(RunStatus::MANUAL_SOLAR, true);
         }
-        button1.processSyncEvents();
+        processBtnSyncEvents();
         return;
     }
 
@@ -495,7 +502,7 @@ void loopGatherProcess() {
         setAllOff();
         wantsHeat = false;
         setRunStatus(RunStatus::ENV_STANDBY);
-        button1.processSyncEvents();
+        processBtnSyncEvents();
         return;
     }
     if (t >= daylight.midday && solar.elevation <= settingSunMinElvPM.get()) {
@@ -504,7 +511,7 @@ void loopGatherProcess() {
         setAllOff();
         wantsHeat = false;
         setRunStatus(RunStatus::ENV_STANDBY);
-        button1.processSyncEvents();
+        processBtnSyncEvents();
         return;
     }
 #else
@@ -517,7 +524,7 @@ void loopGatherProcess() {
         setAllOff();
         wantsHeat = false;
         setRunStatus(RunStatus::STANDBY);
-        button1.processSyncEvents();
+        processBtnSyncEvents();
         return;
     }
 
@@ -528,7 +535,7 @@ void loopGatherProcess() {
 
 void loopControl() {
     Homie.getLogger() << "CONTROL:" << endl;
-    button1.processSyncEvents();
+    processBtnSyncEvents();
 
     // Check if pool wants heat
     if (!wantsHeat) {
@@ -606,7 +613,7 @@ void loopPublishData() {
     statusNode.setProperty("status").send(status.get());
     Homie.getLogger() << "Status: " << status.get() << endl;
     yield();
-    button1.processSyncEvents();
+    processBtnSyncEvents();
 
     delay(100); //This is needed to allow time to publish
     valuesNode.setProperty("tin").send(ItoS(tin.get()));
@@ -628,9 +635,9 @@ void loopPublishData() {
 
 void loopPublishConfig() {
     Homie.getLogger() << "PUBLISH CONFIG:" << endl;
-    button1.processSyncEvents();
+    processBtnSyncEvents();
     delay(100); //This is needed to allow time to publish
-    button1.processSyncEvents();
+    processBtnSyncEvents();
 
     configNode.setProperty("cloudy").send(String(settingCloudy.get()));
     configNode.setProperty("overcastCnt").send(String(settingOvercastCnt.get()));
@@ -755,5 +762,68 @@ void onHomieEvent(const HomieEvent &event) {
         Homie.getLogger() << F("✖ Failed to connect to wifi. Rebooting...") << endl;
         displayCenterMessage("WIFI\nDisconnected");
         esp_restart();
+    } else if (event.type == HomieEventType::MQTT_READY) {
+        displayCenterMessage("MQTT Ready");
+    } else if (event.type == HomieEventType::MQTT_DISCONNECTED) {
+        switch (event.mqttReason) {
+            case AsyncMqttClientDisconnectReason::TCP_DISCONNECTED:
+                displayCenterMessage("MQTT Error:\nTCP Disconnected");
+                break;
+            case AsyncMqttClientDisconnectReason::MQTT_UNACCEPTABLE_PROTOCOL_VERSION:
+                displayCenterMessage("MQTT Error:\nBad Proto Ver");
+                break;
+            case AsyncMqttClientDisconnectReason::MQTT_IDENTIFIER_REJECTED:
+                displayCenterMessage("MQTT Error:\nBad Ident");
+                break;
+            case AsyncMqttClientDisconnectReason::MQTT_SERVER_UNAVAILABLE:
+                displayCenterMessage("MQTT Error:\nServer\nUnavailable");
+                break;
+            case AsyncMqttClientDisconnectReason::MQTT_MALFORMED_CREDENTIALS:
+                displayCenterMessage("MQTT Error:\nBad Creds");
+                break;
+            case AsyncMqttClientDisconnectReason::MQTT_NOT_AUTHORIZED:
+                displayCenterMessage("MQTT Error:\nNot Auth");
+                break;
+            case AsyncMqttClientDisconnectReason::ESP8266_NOT_ENOUGH_SPACE:
+                displayCenterMessage("MQTT Error:\nESP No Space");
+                break;
+            case AsyncMqttClientDisconnectReason::TLS_BAD_FINGERPRINT:
+                displayCenterMessage("MQTT Error:\nBad Fingerprint");
+                break;
+        }
+        delay(1500);
     }
+}
+
+void processBtnSyncEvents()
+{
+    button1.processSyncEvents();
+    button2.processSyncEvents();
+}
+
+void setupConfigPageItems()
+{
+    configPageItemsData[ConfigPageItem::CFG_PG_POOL_SP] = CfgPageItemData{ConfigPageItem::CFG_PG_POOL_SP, VariableType::VAR_TYPE_FLOAT, "Pool SP", &settingPoolSP};
+    configPageItemsData[ConfigPageItem::CFG_PG_AUX_HEAT_SP] = CfgPageItemData{ConfigPageItem::CFG_PG_AUX_HEAT_SP, VariableType::VAR_TYPE_FLOAT, "Aux Heat SP", &settingHeatAuxSP};
+    configPageItemsData[ConfigPageItem::CFG_PG_SP_SWING] = CfgPageItemData{ConfigPageItem::CFG_PG_SP_SWING, VariableType::VAR_TYPE_FLOAT, "SP Swing", &settingSPHyst};
+    configPageItemsData[ConfigPageItem::CFG_PG_SUN_AM_ELV] = CfgPageItemData{ConfigPageItem::CFG_PG_SUN_AM_ELV, VariableType::VAR_TYPE_FLOAT, "Sun AM Elv", &settingSunMinElvAM};
+    configPageItemsData[ConfigPageItem::CFG_PG_SUN_PM_ELV] = CfgPageItemData{ConfigPageItem::CFG_PG_SUN_PM_ELV, VariableType::VAR_TYPE_FLOAT, "Sun PM Elv", &settingSunMinElvPM};
+    configPageItemsData[ConfigPageItem::CFG_PG_CLOUDY] = CfgPageItemData{ConfigPageItem::CFG_PG_CLOUDY, VariableType::VAR_TYPE_INT, "Cloudy Level", &settingCloudy};
+    configPageItemsData[ConfigPageItem::CFG_PG_OVERCAST] = CfgPageItemData{ConfigPageItem::CFG_PG_OVERCAST, VariableType::VAR_TYPE_INT, "Overcast Cnt", &settingOvercastCnt};
+    configPageItemsData[ConfigPageItem::CFG_PG_PUMP_GPM] = CfgPageItemData{ConfigPageItem::CFG_PG_PUMP_GPM, VariableType::VAR_TYPE_FLOAT, "Pump GPM", &settingPumpGpm};
+    configPageItemsData[ConfigPageItem::CFG_PG_AUX_HEAT_EN] = CfgPageItemData{ConfigPageItem::CFG_PG_AUX_HEAT_EN, VariableType::VAR_TYPE_BOOL, "Aux Heat En", &settingHeatAuxEnable};
+
+//    for (int i = 0; i < ConfigPageItem::CFG_PG_LAST_NUM_OF_PAGES; i++) {
+//        Serial.print("Index: ");
+//        Serial.print(i);
+//        Serial.print(" Item: ");
+//        Serial.print(configPageItemsData[i].item);
+//        Serial.print(" Var: ");
+//        Serial.print(configPageItemsData[i].varType);
+//        Serial.print(" Setting: ");
+//        Serial.print(configPageItemsData[i].getSettingValueString().c_str());
+//        Serial.println("");
+//    }
+//
+//    delay(5000);
 }

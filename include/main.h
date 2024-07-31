@@ -54,6 +54,7 @@ void handleTelnet();
 void printHelp();
 #endif
 void onHomieEvent(const HomieEvent& event);
-
+void processBtnSyncEvents();
+void setupConfigPageItems();
 
 //<< Function Prototypes

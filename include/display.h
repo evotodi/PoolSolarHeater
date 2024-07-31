@@ -12,3 +12,6 @@ void displayPageMain();
 void displayPageMainUpdate();
 void displayPageInfo();
 void displayPageConfig();
+void displayPageConfigAlter();
+void displayPageConfigAlterSelect();
+void displayPageConfigAlterEdit();

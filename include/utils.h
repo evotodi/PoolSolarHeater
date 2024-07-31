@@ -13,3 +13,4 @@ void printAddress(DeviceAddress deviceAddress);
 float calcWatts(float tempIn, float tempOut, float gpm);
 void parseDTSettings(DTSetting *pDTSetting, const char *settings, double offset);
 bool strToBool(const char * str);
+void padTo(std::string &str, const size_t num, const char paddingChar = ' ');

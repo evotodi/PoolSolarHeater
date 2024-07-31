@@ -28,6 +28,7 @@
 #define DS_TEMP_PRECISION 12
 #define T_SENSOR_BAD -500
 #define DISPLAY_LOW_WATTS 2000
+#define PAD_CFG_VALS 6
 
 // ESP32 Usable Pins
 #ifndef LED_BUILTIN
@@ -48,10 +49,10 @@
 #define PUMP_RLY_PIN     25
 #define AUX_HEAT_RLY_PIN 26
 #define AUX_RLY_PIN      27
-#define PIN_AUX_32       32
+#define PIN_DISP_AUX_32  32
 #define TFT_DC           33
-#define PIN_AUX_34       34
-#define BTN1_PIN         35
+#define PIN_DISP_AUX_34  34
+#define BTN1_PIN         35 // Button 1
 //#define PIN_AUX_36_I     36 // SPARE Input Only
 //#define PIN_AUX_39_I     39 // SPARE Input Only
 
