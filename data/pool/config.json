@@ -30,10 +30,10 @@
     "toutHeat": 0.0
   },
   "probeSettings": {
-    "air": "addr=283E4749F6C13C1A",
-    "pool": "addr=283E4749F6C13C1A",
-    "tin": "addr=289D6F49F67A3CF8",
-    "toutSolar": "addr=283E4749F6C13C1A",
-    "toutHeat": "addr=283E4749F6C13C1A"
+    "air":       "addr=2861640981F7819B",
+    "pool":      "addr=28CED6FEB223068E",
+    "tin":       "addr=28227C349E230BA4",
+    "toutSolar": "addr=285FE3A79E230BC7",
+    "toutHeat":  "addr=28029A6AC02308F4"
   }
 }
